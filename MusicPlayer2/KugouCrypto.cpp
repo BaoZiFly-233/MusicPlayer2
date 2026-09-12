@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <vector>
 #include <wincrypt.h>
+#include <bcrypt.h>
+#pragma comment(lib, "bcrypt.lib")
 
 using namespace std;
 
@@ -465,67 +467,96 @@ string AesDecryptForRegister(const string& cipher_base64, const string& key6)
 
 string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
 {
-    string key_bytes = DecodeBase64(public_key_base64);
-    if (key_bytes.empty())
-        return string();
-
-    HCRYPTPROV hProv = 0;
-    HCRYPTKEY hKey = 0;
-    CERT_PUBLIC_KEY_INFO* pub_info = nullptr;
+    // 用 CNG（BCrypt）而不是老的 CryptoAPI：填充方式能明确指定成 PKCS#1 v1.5，
+    // 老的 CryptEncrypt 加密出来的结果服务端不认（会返回 rsa failure）。
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    BCRYPT_KEY_HANDLE key = nullptr;
+    vector<BYTE> blob;
+    vector<BYTE> cipher;
     string result;
-
-    if (!CryptAcquireContextW(&hProv, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
-        return result;
 
     do
     {
-        // Base64 -> DER
-        DWORD der_len = 0;
-        if (!CryptStringToBinaryA(public_key_base64.c_str(), static_cast<DWORD>(public_key_base64.size()),
-            CRYPT_STRING_BASE64, nullptr, &der_len, nullptr, nullptr))
+        string der = DecodeBase64(public_key_base64);
+        if (der.empty())
             break;
 
-        vector<BYTE> der(der_len);
-        if (!CryptStringToBinaryA(public_key_base64.c_str(), static_cast<DWORD>(public_key_base64.size()),
-            CRYPT_STRING_BASE64, der.data(), &der_len, nullptr, nullptr))
-            break;
-        der.resize(der_len);
-
-        // DER -> CERT_PUBLIC_KEY_INFO 结构
+        // 公钥是 X.509 SubjectPublicKeyInfo，先解出指数和模数
+        CERT_PUBLIC_KEY_INFO* info = nullptr;
         DWORD info_len = 0;
         if (!CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
-            der.data(), der_len, CRYPT_DECODE_ALLOC_FLAG, nullptr, &pub_info, &info_len))
+            reinterpret_cast<const BYTE*>(der.data()), static_cast<DWORD>(der.size()),
+            CRYPT_DECODE_ALLOC_FLAG, nullptr, &info, &info_len))
             break;
 
-        // 用经典 API 导入，得到 HCRYPTKEY（新版的 Ex2 返回 CNG 句柄，CryptEncrypt 用不了）
-        if (!CryptImportPublicKeyInfo(hProv, X509_ASN_ENCODING, pub_info, &hKey))
-            break;
-
-        DWORD len = static_cast<DWORD>(plain.size());
-        vector<BYTE> buf(plain.begin(), plain.end());
-        buf.resize(len + 256);
-
-        if (!CryptEncrypt(hKey, 0, TRUE, 0, buf.data(), &len, static_cast<DWORD>(buf.size())))
-            break;
-
-        // 输出十六进制小写
-        static const char* hex = "0123456789abcdef";
-        result.reserve(len * 2);
-        for (DWORD i = 0; i < len; ++i)
+        // RSAPUBKEY 布局：magic(4) + bitlen(4) + pubexp(4)，之后紧跟模数
+        if (info->PublicKey.cbData < 12)
         {
-            result.push_back(hex[buf[i] >> 4]);
-            result.push_back(hex[buf[i] & 0x0F]);
+            LocalFree(info);
+            break;
+        }
+
+        const DWORD exp_len = *reinterpret_cast<const DWORD*>(info->PublicKey.pbData + 4);
+        const BYTE* pub_exp = info->PublicKey.pbData + 12;
+        const DWORD mod_len = *reinterpret_cast<const DWORD*>(info->PublicKey.pbData + 8) / 8;
+        const BYTE* modulus = info->PublicKey.pbData + 12 + exp_len;
+
+        if (exp_len == 0 || exp_len > 8 || mod_len == 0
+            || static_cast<DWORD>(info->PublicKey.cbData) < 12 + exp_len + mod_len)
+        {
+            LocalFree(info);
+            break;
+        }
+
+        BCRYPT_RSAKEY_BLOB header{};
+        header.Magic = BCRYPT_RSAPUBLIC_MAGIC;
+        header.BitLength = mod_len * 8;
+        header.cbPublicExp = exp_len;
+        header.cbModulus = mod_len;
+
+        blob.resize(sizeof(header) + exp_len + mod_len);
+        memcpy(blob.data(), &header, sizeof(header));
+        memcpy(blob.data() + sizeof(header), pub_exp, exp_len);
+        memcpy(blob.data() + sizeof(header) + exp_len, modulus, mod_len);
+        LocalFree(info);
+
+        if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_RSA_ALGORITHM, nullptr, 0) != 0)
+            break;
+        if (BCryptImportKeyPair(alg, nullptr, BCRYPT_RSAPUBLIC_BLOB, &key,
+            blob.data(), static_cast<ULONG>(blob.size()), 0) != 0)
+            break;
+
+        BCRYPT_PKCS1_PADDING_INFO pad{};
+        pad.pszAlgId = nullptr;     // RSAES-PKCS1-v1_5 不使用这个字段
+
+        ULONG needed = 0;
+        if (BCryptEncrypt(key, reinterpret_cast<PUCHAR>(const_cast<char*>(plain.data())),
+            static_cast<ULONG>(plain.size()), &pad, nullptr, 0,
+            nullptr, 0, &needed, BCRYPT_PAD_PKCS1) != 0)
+            break;
+
+        cipher.resize(needed);
+        if (BCryptEncrypt(key, reinterpret_cast<PUCHAR>(const_cast<char*>(plain.data())),
+            static_cast<ULONG>(plain.size()), &pad, nullptr, 0,
+            cipher.data(), static_cast<ULONG>(cipher.size()), &needed, BCRYPT_PAD_PKCS1) != 0)
+            break;
+        cipher.resize(needed);
+
+        // CNG 的 RSA 密文是小端序，而服务端要的是标准的大端序，所以这里反转字节
+        static const char* hex = "0123456789abcdef";
+        result.reserve(cipher.size() * 2);
+        for (auto it = cipher.rbegin(); it != cipher.rend(); ++it)
+        {
+            result.push_back(hex[*it >> 4]);
+            result.push_back(hex[*it & 0x0F]);
         }
     } while (false);
 
-    if (pub_info != nullptr)
-        LocalFree(pub_info);
-    if (hKey != 0)
-        CryptDestroyKey(hKey);
-    if (hProv != 0)
-        CryptReleaseContext(hProv, 0);
+    if (key != nullptr)
+        BCryptDestroyKey(key);
+    if (alg != nullptr)
+        BCryptCloseAlgorithmProvider(alg, 0);
 
     return result;
 }
-
 } // namespace kugou
