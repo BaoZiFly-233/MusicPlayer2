@@ -18,6 +18,8 @@
 #include "OnlineSource.h"
 #include "KugouSource.h"
 #include "KugouCrypto.h"
+#include "Player.h"
+#include "SongInfo.h"
 #include <sstream>
 
 #ifdef _DEBUG
@@ -63,6 +65,7 @@ CMusicPlayerApp::CMusicPlayerApp()
 // 唯一的一个 CMusicPlayerApp 对象
 
 CMusicPlayerApp theApp;
+
 
 
 // CMusicPlayerApp 初始化
@@ -129,7 +132,9 @@ BOOL CMusicPlayerApp::InitInstance()
     // 这样在没有界面入口时也能验证接口是否正常，出问题时便于定位。
     {
         wstring probe_arg{ m_lpCmdLine };
-        if (probe_arg.find(L"--test-source") != wstring::npos)
+        bool want_source_test = probe_arg.find(L"--test-source") != wstring::npos;
+
+        if (want_source_test)
         {
             std::wostringstream log;
             log << L"音乐音源自检    配置目录: " << m_config_dir << L"\r\n\r\n";
@@ -213,6 +218,7 @@ BOOL CMusicPlayerApp::InitInstance()
             }
             return FALSE;       // 自检完直接退出
         }
+
     }
 
     wstring cmd_line{ m_lpCmdLine };
