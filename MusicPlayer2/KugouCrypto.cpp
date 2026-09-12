@@ -4,6 +4,8 @@
 #include <random>
 #include <algorithm>
 #include <cstdio>
+#include <vector>
+#include <wincrypt.h>
 
 using namespace std;
 
@@ -283,6 +285,245 @@ string DecodeBase64(const string& encoded)
             result.push_back(static_cast<char>((buffer >> bits) & 0xFF));
         }
     }
+
+    return result;
+}
+
+string EncodeBase64(const string& raw)
+{
+    static const char* table = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    string result;
+    result.reserve((raw.size() + 2) / 3 * 4);
+
+    size_t i = 0;
+    while (i + 2 < raw.size())
+    {
+        unsigned int v = (static_cast<unsigned char>(raw[i]) << 16)
+            | (static_cast<unsigned char>(raw[i + 1]) << 8)
+            | static_cast<unsigned char>(raw[i + 2]);
+        result.push_back(table[(v >> 18) & 0x3F]);
+        result.push_back(table[(v >> 12) & 0x3F]);
+        result.push_back(table[(v >> 6) & 0x3F]);
+        result.push_back(table[v & 0x3F]);
+        i += 3;
+    }
+
+    // 处理尾巴，不足的用 = 补齐
+    const size_t remain = raw.size() - i;
+    if (remain == 1)
+    {
+        unsigned int v = static_cast<unsigned char>(raw[i]) << 16;
+        result.push_back(table[(v >> 18) & 0x3F]);
+        result.push_back(table[(v >> 12) & 0x3F]);
+        result.push_back('=');
+        result.push_back('=');
+    }
+    else if (remain == 2)
+    {
+        unsigned int v = (static_cast<unsigned char>(raw[i]) << 16)
+            | (static_cast<unsigned char>(raw[i + 1]) << 8);
+        result.push_back(table[(v >> 18) & 0x3F]);
+        result.push_back(table[(v >> 12) & 0x3F]);
+        result.push_back(table[(v >> 6) & 0x3F]);
+        result.push_back('=');
+    }
+
+    return result;
+}
+
+string RandomKey6()
+{
+    // 只取小写字母，和官方实现一致
+    static thread_local std::mt19937 rng{ std::random_device{}() };
+    std::uniform_int_distribution<int> dist(0, 25);
+    string key;
+    key.reserve(6);
+    for (int i = 0; i < 6; ++i)
+        key.push_back(static_cast<char>('a' + dist(rng)));
+    return key;
+}
+
+// key 和 IV 都来自 MD5(key6) 的十六进制字符串：前 16 字符作 key，后 16 字符作 IV
+static void DeriveRegisterKeyIv(const string& key6, string& key, string& iv)
+{
+    string h = Md5Hex(key6);
+    key = h.substr(0, 16);
+    iv = h.substr(16, 16);
+}
+
+string AesEncryptForRegister(const string& plain, const string& key6)
+{
+    string key, iv;
+    DeriveRegisterKeyIv(key6, key, iv);
+
+    // CryptoAPI 的 AES 默认用 PKCS7 补位，和 CryptoJS 的 Pkcs7 一致
+    HCRYPTPROV hProv = 0;
+    HCRYPTKEY hKey = 0;
+    string result;
+
+    if (!CryptAcquireContextW(&hProv, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+        return result;
+
+    do
+    {
+        struct AesBlob
+        {
+            BLOBHEADER header;
+            DWORD key_size;
+            BYTE key_data[16];
+        } blob{};
+        blob.header.bType = PLAINTEXTKEYBLOB;
+        blob.header.bVersion = CUR_BLOB_VERSION;
+        blob.header.reserved = 0;
+        blob.header.aiKeyAlg = CALG_AES_128;
+        blob.key_size = 16;
+        memcpy(blob.key_data, key.data(), 16);
+
+        if (!CryptImportKey(hProv, reinterpret_cast<BYTE*>(&blob), sizeof(blob), 0, 0, &hKey))
+            break;
+
+        // 设置 CBC 模式和 IV
+        DWORD mode = CRYPT_MODE_CBC;
+        if (!CryptSetKeyParam(hKey, KP_MODE, reinterpret_cast<BYTE*>(&mode), 0))
+            break;
+        if (!CryptSetKeyParam(hKey, KP_IV, reinterpret_cast<const BYTE*>(iv.data()), 0))
+            break;
+
+        DWORD len = static_cast<DWORD>(plain.size());
+        vector<BYTE> buf(plain.begin(), plain.end());
+        buf.resize(len + 32);       // 留出补位空间
+
+        if (!CryptEncrypt(hKey, 0, TRUE, 0, buf.data(), &len, static_cast<DWORD>(buf.size())))
+            break;
+
+        result.assign(reinterpret_cast<char*>(buf.data()), len);
+    } while (false);
+
+    if (hKey != 0)
+        CryptDestroyKey(hKey);
+    if (hProv != 0)
+        CryptReleaseContext(hProv, 0);
+
+    return result;
+}
+
+string AesDecryptForRegister(const string& cipher_base64, const string& key6)
+{
+    string cipher = DecodeBase64(cipher_base64);
+    if (cipher.empty())
+        return string();
+
+    string key, iv;
+    DeriveRegisterKeyIv(key6, key, iv);
+
+    HCRYPTPROV hProv = 0;
+    HCRYPTKEY hKey = 0;
+    string result;
+
+    if (!CryptAcquireContextW(&hProv, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+        return result;
+
+    do
+    {
+        struct AesBlob
+        {
+            BLOBHEADER header;
+            DWORD key_size;
+            BYTE key_data[16];
+        } blob{};
+        blob.header.bType = PLAINTEXTKEYBLOB;
+        blob.header.bVersion = CUR_BLOB_VERSION;
+        blob.header.reserved = 0;
+        blob.header.aiKeyAlg = CALG_AES_128;
+        blob.key_size = 16;
+        memcpy(blob.key_data, key.data(), 16);
+
+        if (!CryptImportKey(hProv, reinterpret_cast<BYTE*>(&blob), sizeof(blob), 0, 0, &hKey))
+            break;
+
+        DWORD mode = CRYPT_MODE_CBC;
+        if (!CryptSetKeyParam(hKey, KP_MODE, reinterpret_cast<BYTE*>(&mode), 0))
+            break;
+        if (!CryptSetKeyParam(hKey, KP_IV, reinterpret_cast<const BYTE*>(iv.data()), 0))
+            break;
+
+        vector<BYTE> buf(cipher.begin(), cipher.end());
+        DWORD len = static_cast<DWORD>(buf.size());
+        if (!CryptDecrypt(hKey, 0, TRUE, 0, buf.data(), &len))
+            break;
+
+        result.assign(reinterpret_cast<char*>(buf.data()), len);
+    } while (false);
+
+    if (hKey != 0)
+        CryptDestroyKey(hKey);
+    if (hProv != 0)
+        CryptReleaseContext(hProv, 0);
+
+    return result;
+}
+
+string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
+{
+    string key_bytes = DecodeBase64(public_key_base64);
+    if (key_bytes.empty())
+        return string();
+
+    HCRYPTPROV hProv = 0;
+    HCRYPTKEY hKey = 0;
+    CERT_PUBLIC_KEY_INFO* pub_info = nullptr;
+    string result;
+
+    if (!CryptAcquireContextW(&hProv, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+        return result;
+
+    do
+    {
+        // Base64 -> DER
+        DWORD der_len = 0;
+        if (!CryptStringToBinaryA(public_key_base64.c_str(), static_cast<DWORD>(public_key_base64.size()),
+            CRYPT_STRING_BASE64, nullptr, &der_len, nullptr, nullptr))
+            break;
+
+        vector<BYTE> der(der_len);
+        if (!CryptStringToBinaryA(public_key_base64.c_str(), static_cast<DWORD>(public_key_base64.size()),
+            CRYPT_STRING_BASE64, der.data(), &der_len, nullptr, nullptr))
+            break;
+        der.resize(der_len);
+
+        // DER -> CERT_PUBLIC_KEY_INFO 结构
+        DWORD info_len = 0;
+        if (!CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
+            der.data(), der_len, CRYPT_DECODE_ALLOC_FLAG, nullptr, &pub_info, &info_len))
+            break;
+
+        // 用经典 API 导入，得到 HCRYPTKEY（新版的 Ex2 返回 CNG 句柄，CryptEncrypt 用不了）
+        if (!CryptImportPublicKeyInfo(hProv, X509_ASN_ENCODING, pub_info, &hKey))
+            break;
+
+        DWORD len = static_cast<DWORD>(plain.size());
+        vector<BYTE> buf(plain.begin(), plain.end());
+        buf.resize(len + 256);
+
+        if (!CryptEncrypt(hKey, 0, TRUE, 0, buf.data(), &len, static_cast<DWORD>(buf.size())))
+            break;
+
+        // 输出十六进制小写
+        static const char* hex = "0123456789abcdef";
+        result.reserve(len * 2);
+        for (DWORD i = 0; i < len; ++i)
+        {
+            result.push_back(hex[buf[i] >> 4]);
+            result.push_back(hex[buf[i] & 0x0F]);
+        }
+    } while (false);
+
+    if (pub_info != nullptr)
+        LocalFree(pub_info);
+    if (hKey != 0)
+        CryptDestroyKey(hKey);
+    if (hProv != 0)
+        CryptReleaseContext(hProv, 0);
 
     return result;
 }

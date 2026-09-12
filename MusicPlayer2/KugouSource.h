@@ -59,6 +59,11 @@ public:
     void LoadIdentity(const std::wstring& config_dir);
     void SaveIdentity(const std::wstring& config_dir) const;
 
+    // 向服务端注册本机设备，换取设备指纹 dfid。
+    // 取播放地址前需要有它，否则接口会返回「本次请求需要验证」。
+    // 注册成功后 dfid 写进 m_device，调用方记得 SaveIdentity。
+    bool RegisterDevice();
+
     const DeviceIdentity& GetIdentity() const { return m_device; }
     const Account& GetAccount() const { return m_account; }
     bool IsLoggedIn() const { return m_account.IsLoggedIn(); }
