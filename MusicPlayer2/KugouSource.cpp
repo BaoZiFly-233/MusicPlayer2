@@ -739,14 +739,23 @@ bool CKugouSource::RegisterDevice()
         return false;
     }
 
-    // 响应体是 AES 密文，先转 Base64 再解密
-    string cipher_b64 = EncodeBase64(string(raw.begin(), raw.end()));
-    string plain = AesDecryptForRegister(cipher_b64, aes_key);
-    if (plain.empty())
+    // 正常情况下响应体是 AES 密文；但服务端偶尔会直接返回明文报错，
+    // 所以这里先看是不是 JSON，是的话直接用它，不是才解密。
+    string raw_text(raw.begin(), raw.end());
+    string plain;
+    if (!raw_text.empty() && raw_text[0] == '{')
     {
-        // 解不开说明服务端没返回密文，多半是明文报错，直接把内容带出来
-        m_last_error = L"设备注册失败：" + FromUtf8(string(raw.begin(), raw.end()));
-        return false;
+        plain = raw_text;
+    }
+    else
+    {
+        string cipher_b64 = EncodeBase64(raw_text);
+        plain = AesDecryptForRegister(cipher_b64, aes_key);
+        if (plain.empty())
+        {
+            m_last_error = L"设备注册失败：响应既不是 JSON 也解不开密";
+            return false;
+        }
     }
 
     try
@@ -770,7 +779,11 @@ bool CKugouSource::RegisterDevice()
     }
     catch (const json::exception&)
     {
-        m_last_error = L"设备注册返回内容无法识别";
+        // 把原始内容带上，便于判断服务端返回了什么
+        string shown = plain;
+        if (shown.size() > 150)
+            shown = shown.substr(0, 150);
+        m_last_error = L"设备注册返回内容无法识别（原文：" + FromUtf8(shown) + L"）";
         return false;
     }
 }
