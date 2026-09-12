@@ -46,9 +46,8 @@ if (-not $All) {
             $changedNames += (Split-Path $path -Leaf)
         }
     }
-    if ($changedNames.Count -gt 0) {
-        $candidates = $candidates | Where-Object { $changedNames -contains $_.Name }
-    }
+    # 注意：即使改动列表为空也要过滤，否则会退化成检查全部文件
+    $candidates = $candidates | Where-Object { $changedNames -contains $_.Name }
 }
 
 function Test-HasBom([byte[]]$bytes) {
@@ -85,6 +84,12 @@ function Format-Path([string]$fullPath) {
 }
 
 $scope = if ($All) { '全部源文件' } else { '本次改动过的源文件' }
+
+if ($candidates.Count -eq 0) {
+    Write-Host "没有需要检查的源文件（相对 git 没有改动）。想看全部加 -All" -ForegroundColor Cyan
+    exit 0
+}
+
 Write-Host "已检查 $($candidates.Count) 个文件（$scope）"
 Write-Host ""
 
