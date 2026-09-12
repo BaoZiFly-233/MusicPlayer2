@@ -56,9 +56,12 @@ MusicPlayer2/OnlineSource.*      音源抽象层与注册表
 MusicPlayer2/OnlineMusicDlg.*    在线音乐搜索对话框
 MusicPlayer2/qrcodegen/          二维码生成库（MIT，第三方）
 docs/research/                   调研资料（接口、实现经验等）
+docs/HANDOVER.md                 交接文档：改动了哪些、为什么这么改、有哪些坑
 ```
 
 在线歌曲在播放列表里存的是一个虚拟地址（形如 `kugou://<hash>`、`bodian://<歌曲号>`），播放时由音源层换成真实的网络地址。这样曲库、歌单、收藏这些现成功能都不用改。
+
+**要接手改这个项目，先看 [`docs/HANDOVER.md`](docs/HANDOVER.md)** —— 里面写了相对上游改了哪些文件、每处为什么这么改、两个音源的接口要点，以及几个反直觉的坑（编码、崩溃点、RSA 公钥格式）。
 
 ## 调试用命令行开关
 
