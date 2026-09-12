@@ -310,6 +310,17 @@ void CBassCore::Open(const wchar_t * file_path)
         m_musicStream = BASS_StreamCreateURL(file_path, 0, flags, NULL, NULL);
     else
         m_musicStream = BASS_StreamCreateFile(FALSE, /*(GetCurrentFilePath()).c_str()*/file_path, 0, 0, flags);
+
+    // 创建失败（文件不存在、路径为空、在线地址失效等）时句柄为0，
+    // 下面这些查询接口不接受无效句柄，直接调用会导致崩溃，所以先返回。
+    if (m_musicStream == 0)
+    {
+        m_channel_info = {};
+        m_bitrate = 0;
+        m_is_midi = false;
+        return;
+    }
+
     BASS_ChannelGetInfo(m_musicStream, &m_channel_info);
     float bitrate{};
     BASS_ChannelGetAttribute(m_musicStream, BASS_ATTRIB_BITRATE, &bitrate);

@@ -32,6 +32,8 @@
 #include "UiMediaLibItemMgr.h"
 #include "OnlineSource.h"
 #include "OnlineMusicDlg.h"
+#include "KugouCrypto.h"
+#include <sstream>
 #include "CRecentList.h"
 #include "UIElement/PlaylistElement.h"
 #include "ClosseMainWindowInqueryDlg.h"
@@ -361,7 +363,23 @@ BEGIN_MESSAGE_MAP(CMusicPlayerDlg, CMainDialogBase)
     ON_WM_NCCALCSIZE()
     ON_MESSAGE(WM_CLEAR_UI_SERCH_BOX, &CMusicPlayerDlg::OnClearUiSerchBox)
     ON_WM_NCACTIVATE()
+    ON_MESSAGE(WM_PLAY_ONLINE_SONG, &CMusicPlayerDlg::OnPlayOnlineSong)
 END_MESSAGE_MAP()
+
+
+
+// 播放在线音乐搜索里双击选中的曲目。
+// 用消息而不是直接调用，是为了等搜索对话框彻底销毁后再动播放列表。
+LRESULT CMusicPlayerDlg::OnPlayOnlineSong(WPARAM wParam, LPARAM lParam)
+{
+    if (m_has_online_song)
+    {
+        m_has_online_song = false;
+        vector<SongInfo> songs{ m_online_song };
+        CPlayer::GetInstance().OpenSongsInTempPlaylist(songs, 0, true);
+    }
+    return 0;
+}
 
 
 // CMusicPlayerDlg 消息处理程序
@@ -2359,6 +2377,7 @@ BOOL CMusicPlayerDlg::OnInitDialog()
     SetTimer(TIMER_ID, TIMER_ELAPSE, NULL);
     SetTimer(TIMER_1_SEC, 1000, NULL);
 
+
     return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -2833,6 +2852,7 @@ void CMusicPlayerDlg::OnTimer(UINT_PTR nIDEvent)
         m_cmd_open_files_mutx.unlock();
         cmd_open_files_disable = false;
     }
+
 
     CMainDialogBase::OnTimer(nIDEvent);
 }
@@ -3495,9 +3515,17 @@ BOOL CMusicPlayerDlg::OnCommand(WPARAM wParam, LPARAM lParam)
         break;
     case ID_ONLINE_MUSIC:
     {
-        // 在线音乐搜索。搜索结果双击即可加入播放列表并播放。
+        // 在线音乐搜索。双击结果后对话框会以 IDOK 关闭。
+        // 这里不立刻播放：对话框的模态循环还没完全退出，此时去改主窗口的播放列表
+        // 会让通用控件状态错乱（实测崩在 comctl32）。改成先把曲目存下来，
+        // 再投递一条消息，等对话框彻底销毁后再播放。
         COnlineMusicDlg dlg;
-        dlg.DoModal();
+        if (dlg.DoModal() == IDOK && dlg.HasSelection())
+        {
+            m_online_song = dlg.GetSelectedSong();
+            m_has_online_song = true;
+            PostMessage(WM_PLAY_ONLINE_SONG, 0, 0);
+        }
         break;
     }
     case ID_TEST_DIALOG:

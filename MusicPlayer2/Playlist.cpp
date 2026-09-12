@@ -1,5 +1,6 @@
 ﻿#include "stdafx.h"
 #include "Playlist.h"
+#include "OnlineSource.h"
 #include "Common.h"
 #include "FilePathHelper.h"
 #include "SongDataManager.h"
@@ -215,8 +216,11 @@ void CPlaylistFile::ParsePlaylistFile(const std::wstring& file_contents)
 
             //是否为URL
             bool is_url = CCommon::IsURL(item.file_path);
-            //如果是相对路径，则转换成绝对路径
-            if (!is_url)
+            // 在线音源的虚拟路径（如 kugou://xxx）既不是URL也不是本地路径，
+            // 这里要单独识别，否则会被当成相对路径拼成一个错误的本地路径。
+            bool is_online = online::CSourceRegistry::IsVirtualPath(item.file_path);
+            //如果是相对路径，则转换成绝对路径（在线曲目不做这个转换）
+            if (!is_url && !is_online)
                 item.file_path = CCommon::RelativePathToAbsolutePath(item.file_path, CFilePathHelper(m_path).GetDir());
 
             if (index < current_line.size() - 1)
@@ -249,7 +253,7 @@ void CPlaylistFile::ParsePlaylistFile(const std::wstring& file_contents)
                 if (result.size() >= 13)
                     item.cue_file_path = result[12];
             }
-            if (is_url || CCommon::IsPath(item.file_path)) // 绝对路径的语法检查
+            if (is_url || CCommon::IsPath(item.file_path) || online::CSourceRegistry::IsVirtualPath(item.file_path)) // 绝对路径的语法检查（含在线音源的虚拟路径）
             {
                 m_playlist.push_back(item);
             }
@@ -284,11 +288,12 @@ void CPlaylistFile::ParseM3uFile(const std::wstring& file_contents)
             item.title = track_name;
 
             bool is_url = CCommon::IsURL(item.file_path);
-            //如果是相对路径，则转换成绝对路径
-            if (!is_url)
+            bool is_online = online::CSourceRegistry::IsVirtualPath(item.file_path);
+            //如果是相对路径，则转换成绝对路径（在线曲目的虚拟路径不做这个转换）
+            if (!is_url && !is_online)
                 item.file_path = CCommon::RelativePathToAbsolutePath(item.file_path, CFilePathHelper(m_path).GetDir());
             //绝对路径的语法检查
-            if (is_url || CCommon::IsPath(item.file_path))
+            if (is_url || CCommon::IsPath(item.file_path) || online::CSourceRegistry::IsVirtualPath(item.file_path))
                 m_playlist.push_back(item);
 
             track_name.clear();
@@ -315,11 +320,12 @@ void CPlaylistFile::ParseWplFile(const std::string& file_contents)
                     {
                         std::wstring file_path = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(media_element, "src"), CodeType::UTF8);
                         bool is_url = CCommon::IsURL(file_path);
-                        //如果是相对路径，则转换成绝对路径
-                        if (!is_url)
+                        bool is_online = online::CSourceRegistry::IsVirtualPath(file_path);
+                        //如果是相对路径，则转换成绝对路径（在线曲目的虚拟路径不做这个转换）
+                        if (!is_url && !is_online)
                             file_path = CCommon::RelativePathToAbsolutePath(file_path, CFilePathHelper(m_path).GetDir());
                         //绝对路径的语法检查
-                        if (is_url || CCommon::IsPath(file_path))
+                        if (is_url || CCommon::IsPath(file_path) || online::CSourceRegistry::IsVirtualPath(file_path))
                         {
                             SongInfo item;
                             item.file_path = file_path;
@@ -352,11 +358,12 @@ void CPlaylistFile::ParseTtplFile(const std::string& file_contents)
                         std::wstring file_path = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(item_element, "file"), CodeType::UTF8);
                         std::wstring title = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(item_element, "title"), CodeType::UTF8);
                         bool is_url = CCommon::IsURL(file_path);
-                        //如果是相对路径，则转换成绝对路径
-                        if (!is_url)
+                        bool is_online = online::CSourceRegistry::IsVirtualPath(file_path);
+                        //如果是相对路径，则转换成绝对路径（在线曲目的虚拟路径不做这个转换）
+                        if (!is_url && !is_online)
                             file_path = CCommon::RelativePathToAbsolutePath(file_path, CFilePathHelper(m_path).GetDir());
                         //绝对路径的语法检查
-                        if (is_url || CCommon::IsPath(file_path))
+                        if (is_url || CCommon::IsPath(file_path) || online::CSourceRegistry::IsVirtualPath(file_path))
                         {
                             SongInfo item;
                             item.file_path = file_path;

@@ -174,6 +174,9 @@ const int EQU_STYLE_TABLE[9][EQU_CH_NUM]		//均衡器预设
 
 #define WM_NEXT_USER_MSG (WM_USER+143)
 
+//播放音乐搜索对话框中双击选中的在线曲目（等对话框销毁后再执行）
+#define WM_PLAY_ONLINE_SONG (WM_USER+144)
+
 #ifdef _DEBUG
 #define ADD_TO_PLAYLIST_MAX_SIZE 10         //“添加到播放列表”子菜单中项目的最大数量（不能超过40）
 #else

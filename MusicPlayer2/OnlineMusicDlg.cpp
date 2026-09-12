@@ -6,6 +6,7 @@
 
 using namespace std;
 
+
 IMPLEMENT_DYNAMIC(COnlineMusicDlg, CBaseDialog)
 
 const UINT COnlineMusicDlg::WM_ONLINE_SEARCH_DONE;
@@ -32,6 +33,7 @@ BEGIN_MESSAGE_MAP(COnlineMusicDlg, CBaseDialog)
     ON_BN_CLICKED(IDC_ONLINE_SEARCH_BUTTON, &COnlineMusicDlg::OnBnClickedSearch)
     ON_NOTIFY(NM_DBLCLK, IDC_ONLINE_RESULT_LIST, &COnlineMusicDlg::OnNMDblclkList)
     ON_MESSAGE(WM_ONLINE_SEARCH_DONE, &COnlineMusicDlg::OnSearchDone)
+    ON_MESSAGE(WM_ONLINE_PLAY_SELECTED, &COnlineMusicDlg::OnPlaySelected)
 END_MESSAGE_MAP()
 
 CString COnlineMusicDlg::GetDialogName() const
@@ -218,18 +220,28 @@ void COnlineMusicDlg::PlaySelected()
 
     // 把搜索结果变成播放器认识的曲目。
     // 这里存的是虚拟地址（如 kugou://xxx），播放时由音源层换成真实网络地址。
-    SongInfo song;
-    song.file_path = t.virtual_path;
-    song.title = t.title;
-    song.artist = t.artist;
-    song.album = t.album;
+    m_selected = SongInfo();
+    m_selected.file_path = t.virtual_path;
+    m_selected.title = t.title;
+    m_selected.artist = t.artist;
+    m_selected.album = t.album;
     // 曲目时长由结束位置表示：SongInfo::length() 等于 end_pos - start_pos
     if (t.duration_ms > 0)
-        song.end_pos.fromInt(t.duration_ms);
+        m_selected.end_pos.fromInt(t.duration_ms);
+    m_has_selection = true;
 
-    vector<SongInfo> songs{ song };
-    CPlayer::GetInstance().OpenSongsInTempPlaylist(songs, 0, true);
-    CPlayer::GetInstance().PlayTrack(0, false);
+    // 关键：不要在这里直接 EndDialog。
+    // 本函数是在列表通知消息的处理过程中被调用的，此时销毁窗口会让
+    // 通用控件（comctl32）在消息返回后继续访问已释放的对象，导致崩溃。
+    // 改成投递一条消息，等当前消息处理完、回到消息循环后再关闭。
+    PostMessage(WM_ONLINE_PLAY_SELECTED, 0, 0);
+}
+
+// 收到「用户选好了要播的歌」后关闭对话框，返回值交给调用方判断是否要播放
+LRESULT COnlineMusicDlg::OnPlaySelected(WPARAM wParam, LPARAM lParam)
+{
+    EndDialog(IDOK);
+    return 0;
 }
 
 void COnlineMusicDlg::OnOK()

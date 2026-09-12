@@ -487,7 +487,11 @@ void CPlayer::MusicControl(Command command, int volume_step)
     // stop和close也可以在m_index失效无法播放时使用（RemoveSong(s)）
     if (command != Command::VOLUME_ADJ && command != Command::STOP && command != Command::CLOSE)
     {
-        if (!CCommon::IsURL(GetCurrentFilePath()) && !CCommon::FileExist(GetCurrentFilePath()))
+        // 在线曲目存的是虚拟路径（如 kugou://xxx），不是本地文件，
+        // 这里要放行；真正的网络地址在下面 OPEN 时由音源层解析出来。
+        const wstring& cur_path = GetCurrentFilePath();
+        bool is_online = online::CSourceRegistry::IsVirtualPath(cur_path);
+        if (!CCommon::IsURL(cur_path) && !is_online && !CCommon::FileExist(cur_path))
         {
             m_error_state = ES_FILE_NOT_EXIST;
             return;
@@ -508,13 +512,16 @@ void CPlayer::MusicControl(Command command, int volume_step)
         // 在线曲目在播放列表里存的是虚拟路径（如 kugou://<hash>），
         // 这里换成真实的 http 地址再交给播放核心；本地文件原样返回。
         wstring play_path = online::CSourceRegistry::Instance().ResolvePlayUrl(cur_song.file_path);
+
         if (play_path.empty())
         {
-            // 音源解析失败（无版权、需要会员、接口变更等）
+            // 音源解析失败（无版权、需要会员、接口变更等）。
+            // 注意不要拿空路径去调播放核心：播放核心会用一个无效句柄继续查音频信息，
+            // 那里没有判空，会直接崩溃。所以这里只置状态就返回。
             m_error_state = ES_FILE_CANNOT_BE_OPEN;
-            m_pCore->Open(L"");
-            GetPlayerCoreError(L"Open");
             m_file_opend = true;
+            PostMessage(theApp.m_pMainWnd->m_hWnd, WM_MUSIC_STREAM_OPENED, 0, 0);
+            m_controls.UpdateControls(PlaybackStatus::Closed);
             return;
         }
         m_pCore->Open(play_path.c_str());

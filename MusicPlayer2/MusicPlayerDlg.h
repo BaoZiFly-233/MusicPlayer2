@@ -133,6 +133,10 @@ protected:
     vector<int> m_items_selected;
     int m_tab_selected{};       //选项设置中选择的标签
 
+    // 在线音乐搜索里双击选中的曲目，等对话框销毁后由 OnPlayOnlineSong 播放
+    SongInfo m_online_song;
+    bool m_has_online_song{ false };
+
     CMiniModeDlg m_miniModeDlg{ m_item_selected, m_items_selected };        //迷你模式对话框
 
     CCortanaLyric m_cortana_lyric;      //用于显示Cortana歌词
@@ -311,6 +315,8 @@ protected:
     afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
     afx_msg void OnPaint();
     afx_msg HCURSOR OnQueryDragIcon();
+    // 播放在线音乐搜索里双击选中的曲目（消息在对话框销毁后才会处理）
+    afx_msg LRESULT OnPlayOnlineSong(WPARAM wParam, LPARAM lParam);
     DECLARE_MESSAGE_MAP()
 
         afx_msg void OnSize(UINT nType, int cx, int cy);
