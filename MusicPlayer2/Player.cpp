@@ -14,6 +14,7 @@
 #include "CRecentList.h"
 #include "MediaLibHelper.h"
 #include "SongMultiVersion.h"
+#include "OnlineSource.h"
 
 CPlayer CPlayer::m_instance;
 
@@ -504,7 +505,19 @@ void CPlayer::MusicControl(Command command, int volume_step)
         m_error_state = ES_NO_ERROR;
         SongInfo& cur_song = GetCurrentSongInfo2(); // 获取m_playlist[m_index]的引用，m_index无效时取得m_no_use
         m_is_osu = COSUPlayerHelper::IsOsuFile(cur_song.file_path);
-        m_pCore->Open(cur_song.file_path.c_str());
+        // 在线曲目在播放列表里存的是虚拟路径（如 kugou://<hash>），
+        // 这里换成真实的 http 地址再交给播放核心；本地文件原样返回。
+        wstring play_path = online::CSourceRegistry::Instance().ResolvePlayUrl(cur_song.file_path);
+        if (play_path.empty())
+        {
+            // 音源解析失败（无版权、需要会员、接口变更等）
+            m_error_state = ES_FILE_CANNOT_BE_OPEN;
+            m_pCore->Open(L"");
+            GetPlayerCoreError(L"Open");
+            m_file_opend = true;
+            return;
+        }
+        m_pCore->Open(play_path.c_str());
         GetPlayerCoreError(L"Open");
         if (m_pCore->GetCoreType() == PT_BASS && GetBassHandle() == 0)
             m_error_state = ES_FILE_CANNOT_BE_OPEN;

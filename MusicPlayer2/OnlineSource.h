@@ -1,0 +1,104 @@
+﻿#pragma once
+
+#include <string>
+#include <vector>
+
+// 在线音源的抽象层。
+//
+// 设计要点：在线歌曲在曲库/播放列表里用一个「虚拟路径」作为唯一标识，
+// 例如 kugou://<hash>、bodian://<rid>。这样 SongKey（file_path + cue_track）
+// 这套既有机制无需改动，曲库、歌单、收藏都能直接复用。
+// 真正播放前，由本层把虚拟路径解析成实际的 http(s) 播放地址，
+// 再交给 IPlayerCore::Open()；BASS 会走 BASS_StreamCreateURL 拉流播放。
+//
+// 一个音源需要提供的能力，按使用顺序排列：
+//   1. GetScheme()           —— 声明自己负责哪个虚拟路径前缀
+//   2. Search()              —— 按关键字找歌，产出带虚拟路径的曲目
+//   3. ResolvePlayUrl()      —— 播放前把虚拟路径换成真实地址（地址会过期，不缓存）
+//   4. GetLyric()            —— 取歌词（可选，失败不影响播放）
+//
+// 新增音源只需继承本类并在 CSourceRegistry 注册，播放器其余部分不用改。
+
+namespace online
+{
+
+// 音源返回的一首曲目。字段够用即可，不追求与各平台一一对应。
+struct Track
+{
+    std::wstring virtual_path;      // 虚拟路径，形如 kugou://<hash>，作为唯一标识
+    std::wstring title;             // 标题
+    std::wstring artist;            // 艺术家
+    std::wstring album;             // 唱片集
+    int duration_ms{ 0 };           // 时长（毫秒），未知为 0
+    std::wstring extra;             // 音源私有附加信息（如 album_audio_id），播放时回传
+
+    bool IsValid() const { return !virtual_path.empty(); }
+};
+
+// 歌词查询结果
+struct Lyric
+{
+    std::wstring content;           // 歌词文本（已解码成 LRC 文本）
+    bool HasContent() const { return !content.empty(); }
+};
+
+// 音源接口
+class IOnlineSource
+{
+public:
+    virtual ~IOnlineSource() {}
+
+    // 本音源负责的虚拟路径 scheme，返回小写、不含 "://"，例如 L"kugou"
+    virtual std::wstring GetScheme() const = 0;
+
+    // 界面上显示的音源名称，例如 L"酷狗概念版"
+    virtual std::wstring GetDisplayName() const = 0;
+
+    // 按关键字搜索
+    virtual bool Search(const std::wstring& keyword, int page, std::vector<Track>& result) = 0;
+
+    // 把虚拟路径解析成可直接播放的 http(s) 地址。
+    // 返回空字符串表示失败（无版权、需会员、接口变更等）。
+    virtual std::wstring ResolvePlayUrl(const std::wstring& virtual_path) = 0;
+
+    // 取歌词。失败返回 false 即可，不影响播放。
+    virtual bool GetLyric(const std::wstring& virtual_path, Lyric& result) { return false; }
+};
+
+// 音源注册表：负责按虚拟路径找到对应音源，并提供统一的解析入口。
+class CSourceRegistry
+{
+public:
+    static CSourceRegistry& Instance();
+
+    // 注册一个音源（由初始化代码调用）
+    void Register(IOnlineSource* source);
+
+    // 虚拟路径判断：是否属于某个在线音源
+    static bool IsVirtualPath(const std::wstring& path);
+
+    // 从虚拟路径中取出 scheme（小写）。非虚拟路径返回空字符串。
+    static std::wstring GetScheme(const std::wstring& path);
+
+    // 按虚拟路径找音源。找不到返回 nullptr。
+    IOnlineSource* FindByPath(const std::wstring& path);
+
+    // 按 scheme 找音源（不区分大小写）。
+    IOnlineSource* FindByScheme(const std::wstring& scheme);
+
+    // 解析成可播放地址。失败返回空字符串。
+    // 传入本地路径时原样返回，方便调用方无脑调用。
+    std::wstring ResolvePlayUrl(const std::wstring& path);
+
+    // 已注册的音源列表（界面用）
+    const std::vector<IOnlineSource*>& GetAll() const { return m_sources; }
+
+private:
+    CSourceRegistry() {}
+    std::vector<IOnlineSource*> m_sources;
+};
+
+// 初始化：注册所有内置音源。程序启动时调用一次。
+void InitOnlineSources();
+
+} // namespace online
