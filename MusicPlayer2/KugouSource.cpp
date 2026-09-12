@@ -182,7 +182,7 @@ bool CKugouSource::Request(const wstring& url_path, const wstring& router,
             headers_str += "x-router: " + ToUtf8(router) + "\r\n";
 
         wstring result;
-        int ret = CInternetCommon::HttpGet(url, result, FromUtf8(headers_str), true);
+        int ret = CInternetCommon::HttpGet(url, result, FromUtf8(headers_str), false);
         if (ret != CInternetCommon::SUCCESS || result.empty())
             return false;
 

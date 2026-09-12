@@ -64,7 +64,7 @@ public:
     bool IsLoggedIn() const { return m_account.IsLoggedIn(); }
 
     // 上一次解析失败的原因，可直接显示给用户
-    const std::wstring& GetLastError() const { return m_last_error; }
+    std::wstring GetLastError() const override { return m_last_error; }
 
 protected:
     // 向接口发一个带概念版公共参数和签名的请求。
