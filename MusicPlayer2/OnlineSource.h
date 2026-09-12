@@ -63,6 +63,10 @@ public:
 
     // 取歌词。失败返回 false 即可，不影响播放。
     virtual bool GetLyric(const std::wstring& virtual_path, Lyric& result) { return false; }
+
+    // 上一次操作的失败原因，可直接显示给用户。
+    // 播放失败时界面靠它给出「需要会员」这类准确提示，而不是笼统的「播放失败」。
+    virtual std::wstring GetLastError() const { return std::wstring(); }
 };
 
 // 音源注册表：负责按虚拟路径找到对应音源，并提供统一的解析入口。

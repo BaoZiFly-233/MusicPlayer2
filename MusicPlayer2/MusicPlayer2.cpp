@@ -17,6 +17,8 @@
 #include "QQMusicLyricDownload.h"
 #include "OnlineSource.h"
 #include "KugouSource.h"
+#include "KugouCrypto.h"
+#include <sstream>
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -120,6 +122,97 @@ BOOL CMusicPlayerApp::InitInstance()
         online::IOnlineSource* kugou_source = online::CSourceRegistry::Instance().FindByScheme(L"kugou");
         if (kugou_source != nullptr)
             static_cast<kugou::CKugouSource*>(kugou_source)->LoadIdentity(m_config_dir);
+    }
+
+    // 命令行自检：MusicPlayer2.exe --test-source
+    // 依次调用各音源做一次搜索和取播放地址测试，把结果写到 source_test.log。
+    // 这样在没有界面入口时也能验证接口是否正常，出问题时便于定位。
+    {
+        wstring probe_arg{ m_lpCmdLine };
+        if (probe_arg.find(L"--test-source") != wstring::npos)
+        {
+            std::wostringstream log;
+            log << L"音乐音源自检    配置目录: " << m_config_dir << L"\r\n\r\n";
+
+            const auto& sources = online::CSourceRegistry::Instance().GetAll();
+            log << L"已注册音源: " << sources.size() << L" 个\r\n";
+            for (online::IOnlineSource* src : sources)
+                log << L"  - " << src->GetDisplayName() << L" (" << src->GetScheme() << L")\r\n";
+            log << L"\r\n";
+
+            for (online::IOnlineSource* src : sources)
+            {
+                log << L"========== " << src->GetDisplayName() << L" ==========\r\n";
+
+                if (src->GetScheme() == L"kugou")
+                {
+                    kugou::CKugouSource* kg = static_cast<kugou::CKugouSource*>(src);
+                    log << L"  设备 mid = " << kugou::FromUtf8(kg->GetIdentity().mid) << L"\r\n";
+                    log << L"  登录状态 = " << (kg->IsLoggedIn() ? L"已登录" : L"未登录") << L"\r\n\r\n";
+                }
+
+                vector<online::Track> tracks;
+                bool ok = src->Search(L"晴天", 1, tracks);
+                log << L"  搜索「晴天」: " << (ok ? L"成功" : L"失败")
+                    << L"，得到 " << tracks.size() << L" 首\r\n";
+                if (!ok)
+                {
+                    wstring err = src->GetLastError();
+                    if (!err.empty())
+                        log << L"    原因: " << err << L"\r\n";
+                }
+
+                for (size_t i = 0; i < tracks.size() && i < 3; ++i)
+                {
+                    log << L"    " << (i + 1) << L". " << tracks[i].title << L" - " << tracks[i].artist
+                        << L"  [" << tracks[i].virtual_path << L"]\r\n";
+                }
+
+                // 取播放地址。前几首可能是付费曲，所以往后多试几首，
+                // 找到免费曲就能说明整条链路是通的。
+                if (!tracks.empty())
+                {
+                    bool got_url = false;
+                    size_t tried = 0;
+                    wstring last_err;
+                    for (size_t i = 0; i < tracks.size() && tried < 5; ++i, ++tried)
+                    {
+                        wstring url = src->ResolvePlayUrl(tracks[i].virtual_path);
+                        if (!url.empty())
+                        {
+                            log << L"  取播放地址: 成功（试到第 " << (i + 1) << L" 首）\r\n"
+                                << L"    " << tracks[i].title << L" - " << tracks[i].artist << L"\r\n"
+                                << L"    " << url << L"\r\n";
+                            got_url = true;
+                            break;
+                        }
+                        last_err = src->GetLastError();
+                    }
+                    if (!got_url)
+                    {
+                        log << L"  取播放地址: 前 " << tried << L" 首都没拿到\r\n";
+                        if (!last_err.empty())
+                            log << L"    最后一首的原因: " << last_err << L"\r\n";
+                    }
+                }
+                log << L"\r\n";
+            }
+
+            // 以 UTF-8 写入，方便直接用文本编辑器查看
+            {
+                string utf8 = kugou::ToUtf8(log.str());
+                wstring log_path = m_config_dir + L"source_test.log";
+                HANDLE hFile = CreateFileW(log_path.c_str(), GENERIC_WRITE, 0, nullptr,
+                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (hFile != INVALID_HANDLE_VALUE)
+                {
+                    DWORD written = 0;
+                    WriteFile(hFile, utf8.data(), static_cast<DWORD>(utf8.size()), &written, nullptr);
+                    CloseHandle(hFile);
+                }
+            }
+            return FALSE;       // 自检完直接退出
+        }
     }
 
     wstring cmd_line{ m_lpCmdLine };

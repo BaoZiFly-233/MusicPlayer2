@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "OnlineSource.h"
 #include "KugouSource.h"
+#include "BodianSource.h"
 
 using namespace std;
 
@@ -96,6 +97,7 @@ wstring CSourceRegistry::ResolvePlayUrl(const wstring& path)
 void InitOnlineSources()
 {
     CSourceRegistry::Instance().Register(new kugou::CKugouSource());
+    CSourceRegistry::Instance().Register(new bodian::CBodianSource());
 }
 
 } // namespace online
