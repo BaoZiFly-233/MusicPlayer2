@@ -672,10 +672,14 @@ bool CKugouSource::RegisterDevice()
     string aes_key = RandomKey6();
     string body = EncodeBase64(AesEncryptForRegister(info.dump(), aes_key));
 
-    // p 参数：把 AES key 和账号信息用 RSA 加密后交给服务端
+    // p 参数：把 AES key 和账号信息用 RSA 加密后交给服务端。
+    // 注意 uid 未登录时必须给「数字 0」而不是字符串 "0"，否则服务端会报 rsa failure。
     json key_info;
     key_info["aes"] = aes_key;
-    key_info["uid"] = m_account.IsLoggedIn() ? m_account.userid : "0";
+    if (m_account.IsLoggedIn())
+        key_info["uid"] = m_account.userid;
+    else
+        key_info["uid"] = 0;
     key_info["token"] = m_account.token;
     string p = RsaEncryptPkcs1(key_info.dump(), LITE_RSA_PUBLIC_KEY);
     if (p.empty())
