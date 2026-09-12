@@ -1,3 +1,7 @@
+> **本仓库是 MusicPlayer2 的一个分支**，在本地播放的基础上加了在线音源（酷狗概念版、波点音乐）。
+> 本分支的说明、构建方式和已知限制请看 **[README-BoTapMusic.md](./README-BoTapMusic.md)**。
+> 下面是原项目的介绍。
+
 **简体中文 | [English](./README_en-us.md)**
 
 <a href="https://hellogithub.com/repository/zhongyang219/MusicPlayer2" target="_blank"><img src="https://api.hellogithub.com/v1/widgets/recommend.svg?rid=1ad354e5ab404301919665ac7973cd07&claim_uid=CeVqou2T1dIvfQP&theme=neutral" alt="Featured｜HelloGitHub" style="width: 250px; height: 54px;" width="250" height="54" /></a>
