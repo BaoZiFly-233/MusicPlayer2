@@ -15,6 +15,8 @@
 #include "UiMediaLibItemMgr.h"
 #include "NeteaseLyricDownload.h"
 #include "QQMusicLyricDownload.h"
+#include "OnlineSource.h"
+#include "KugouSource.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -110,6 +112,15 @@ BOOL CMusicPlayerApp::InitInstance()
     //m_temp_path = CCommon::GetTemplatePath() + L"MusicPlayer2\\";
     m_playlist_dir = m_config_dir + L"playlist\\";
     CCommon::CreateDir(m_playlist_dir);
+
+    // 初始化在线音源。必须在配置目录确定之后进行，因为设备身份和账号
+    // 要存到配置目录里。设备身份第一次运行生成，之后一直复用。
+    online::InitOnlineSources();
+    {
+        online::IOnlineSource* kugou_source = online::CSourceRegistry::Instance().FindByScheme(L"kugou");
+        if (kugou_source != nullptr)
+            static_cast<kugou::CKugouSource*>(kugou_source)->LoadIdentity(m_config_dir);
+    }
 
     wstring cmd_line{ m_lpCmdLine };
     //当程序被Windows重新启动时，直接退出程序
