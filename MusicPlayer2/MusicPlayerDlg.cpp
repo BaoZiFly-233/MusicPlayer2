@@ -30,6 +30,8 @@
 #include "WinVersionHelper.h"
 #include "MoreRecentItemDlg.h"
 #include "UiMediaLibItemMgr.h"
+#include "OnlineSource.h"
+#include "OnlineMusicDlg.h"
 #include "CRecentList.h"
 #include "UIElement/PlaylistElement.h"
 #include "ClosseMainWindowInqueryDlg.h"
@@ -3491,6 +3493,13 @@ BOOL CMusicPlayerDlg::OnCommand(WPARAM wParam, LPARAM lParam)
         CTest::Test();
         //CPlayer::GetInstance().DoABRepeat();
         break;
+    case ID_ONLINE_MUSIC:
+    {
+        // 在线音乐搜索。搜索结果双击即可加入播放列表并播放。
+        COnlineMusicDlg dlg;
+        dlg.DoModal();
+        break;
+    }
     case ID_TEST_DIALOG:
     {
         CTestDlg dlg;
