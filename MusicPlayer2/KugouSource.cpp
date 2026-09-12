@@ -487,12 +487,29 @@ bool CKugouSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
 // 扫码登录
 // ---------------------------------------------------------------------------
 
-// 登录接口在 login-user.kugou.com，用 Web 签名，参数不带那套公共参数，
-// 所以单独走这里，不复用 Request()。
-// 注意：签名要用参数的「原始值」，拼进 URL 时才做 URL 编码，顺序不能反。
+// 登录接口在 login-user.kugou.com。
+// 注意两点（都是实测出来的）：
+//   1. 除了平台自己的参数，还要带上客户端的公共参数（dfid/mid/uuid/appid/
+//      clientver/clienttime/userid），少了会返回 20010 签名校验失败；
+//      clienttime 尤其不能省，否则返回 20006。
+//   2. 签名用参数的「原始值」，拼进 URL 时才做 URL 编码，顺序不能反。
 bool CKugouSource::RequestLoginApi(const wstring& url_path,
-    const vector<pair<string, string>>& params, json& out_json)
+    vector<pair<string, string>>& params, json& out_json)
 {
+    char clienttime[32]{};
+    sprintf_s(clienttime, "%lld", static_cast<long long>(time(nullptr)));
+
+    // 补上公共参数（调用方只传平台自己的参数）
+    params.push_back({ "dfid",       m_device.dfid });
+    params.push_back({ "mid",        m_device.mid });
+    params.push_back({ "uuid",       "-" });
+    params.push_back({ "appid",      LITE_APPID });
+    params.push_back({ "clientver",  LITE_CLIENTVER });
+    params.push_back({ "clienttime", clienttime });
+    params.push_back({ "userid",     m_account.IsLoggedIn() ? m_account.userid : "0" });
+    if (m_account.IsLoggedIn())
+        params.push_back({ "token", m_account.token });
+
     vector<SignParam> sign_params;
     for (const auto& kv : params)
         sign_params.push_back({ kv.first, kv.second });
@@ -507,9 +524,7 @@ bool CKugouSource::RequestLoginApi(const wstring& url_path,
         query += '=';
         query += UrlEncode(kv.second);
     }
-    if (!query.empty())
-        query += '&';
-    query += "signature=";
+    query += "&signature=";
     query += signature;
 
     wstring url = L"https://login-user.kugou.com" + url_path + L"?" + FromUtf8(query);
@@ -542,9 +557,8 @@ bool CKugouSource::GetQrCode(wstring& qr_content)
     qr_content.clear();
     m_last_error.clear();
 
-    // 概念版客户端用 appid=1001，平台固定 4
+    // type/plat 固定；qrcode_txt 里带的 appid=1001 是扫码页要用的，与公共参数的 appid 不是一回事
     vector<pair<string, string>> params = {
-        { "appid",      "1001" },
         { "type",       "1" },
         { "plat",       "4" },
         { "srcappid",   "2919" },
@@ -557,7 +571,6 @@ bool CKugouSource::GetQrCode(wstring& qr_content)
 
     if (response.value("status", 0) != 1 || !response.contains("data"))
     {
-        // 接口目前返回 error_code 20010。带上原话方便以后排查。
         string dumped = response.dump();
         if (dumped.size() > 160)
             dumped = dumped.substr(0, 160);
@@ -587,7 +600,6 @@ CKugouSource::QrStatus CKugouSource::CheckQrCode()
 
     vector<pair<string, string>> params = {
         { "plat",     "4" },
-        { "appid",    "3116" },
         { "srcappid", "2919" },
         { "qrcode",   ToUtf8(m_qr_key) },
         { "dev",      m_device.server_dev },

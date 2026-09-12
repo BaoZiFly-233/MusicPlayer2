@@ -153,7 +153,29 @@ BOOL CMusicPlayerApp::InitInstance()
                 {
                     kugou::CKugouSource* kg = static_cast<kugou::CKugouSource*>(src);
                     log << L"  设备 mid = " << kugou::FromUtf8(kg->GetIdentity().mid) << L"\r\n";
-                    log << L"  登录状态 = " << (kg->IsLoggedIn() ? L"已登录" : L"未登录") << L"\r\n\r\n";
+                    log << L"  登录状态 = " << (kg->IsLoggedIn() ? L"已登录" : L"未登录") << L"\r\n";
+
+                    // 顺带验证登录接口能否取到二维码
+                    std::wstring qr;
+                    if (kg->GetQrCode(qr))
+                    {
+                        log << L"  取登录二维码: 成功\r\n    " << qr << L"\r\n";
+                        const wchar_t* st_text = L"";
+                        switch (kg->CheckQrCode())
+                        {
+                        case kugou::CKugouSource::QrStatus::Waiting:    st_text = L"等待扫码"; break;
+                        case kugou::CKugouSource::QrStatus::Scanned:    st_text = L"已扫码待确认"; break;
+                        case kugou::CKugouSource::QrStatus::Expired:    st_text = L"已过期"; break;
+                        case kugou::CKugouSource::QrStatus::Authorized: st_text = L"已授权"; break;
+                        default:                                        st_text = L"出错"; break;
+                        }
+                        log << L"  扫码状态: " << st_text << L"\r\n";
+                    }
+                    else
+                    {
+                        log << L"  取登录二维码: 失败（" << kg->GetLastError() << L"）\r\n";
+                    }
+                    log << L"\r\n";
                 }
 
                 vector<online::Track> tracks;

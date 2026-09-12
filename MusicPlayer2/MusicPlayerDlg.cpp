@@ -32,6 +32,8 @@
 #include "UiMediaLibItemMgr.h"
 #include "OnlineSource.h"
 #include "OnlineMusicDlg.h"
+#include "KugouSource.h"
+#include "KugouLoginDlg.h"
 #include "KugouCrypto.h"
 #include <sstream>
 #include "CRecentList.h"
@@ -3519,6 +3521,18 @@ BOOL CMusicPlayerDlg::OnCommand(WPARAM wParam, LPARAM lParam)
         // 这里不立刻播放：对话框的模态循环还没完全退出，此时去改主窗口的播放列表
         // 会让通用控件状态错乱（实测崩在 comctl32）。改成先把曲目存下来，
         // 再投递一条消息，等对话框彻底销毁后再播放。
+        // 若还没登录酷狗，先给一次登录机会（可以取消）。
+        // 登录后才能拿到歌曲的完整播放地址，否则只能试听。
+        online::IOnlineSource* kg_src = online::CSourceRegistry::Instance().FindByScheme(L"kugou");
+        kugou::CKugouSource* kg = dynamic_cast<kugou::CKugouSource*>(kg_src);
+        if (kg != nullptr && !kg->IsLoggedIn())
+        {
+            CKugouLoginDlg login_dlg;
+            login_dlg.DoModal();
+            if (login_dlg.IsLoginSucceeded())
+                kg->SaveIdentity(theApp.m_config_dir);
+        }
+
         COnlineMusicDlg dlg;
         if (dlg.DoModal() == IDOK && dlg.HasSelection())
         {
