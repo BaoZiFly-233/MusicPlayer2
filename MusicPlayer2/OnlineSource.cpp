@@ -1,5 +1,6 @@
 ﻿#include "stdafx.h"
 #include "OnlineSource.h"
+#include "KugouSource.h"
 
 using namespace std;
 
@@ -91,13 +92,10 @@ wstring CSourceRegistry::ResolvePlayUrl(const wstring& path)
     return source->ResolvePlayUrl(path);
 }
 
-// 内置音源在这里注册。酷狗概念版与波点音乐的实现在各自文件中，
-// 它们完成前这里只保留注册骨架，注册表为空也能正常工作。
+// 内置音源在这里注册。注册顺序即界面上的显示顺序。
 void InitOnlineSources()
 {
-    // 注册顺序即界面上的显示顺序
-    // Register(new CKugouLiteSource());
-    // Register(new CBodianSource());
+    CSourceRegistry::Instance().Register(new kugou::CKugouSource());
 }
 
 } // namespace online
