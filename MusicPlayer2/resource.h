@@ -1090,6 +1090,11 @@
 #define ID_SONGS_MULTI_VERSION_ITEM_MAX 33511
 #define ID_LIST_ITEM_PREVIEW            33512
 
+// 酷狗扫码登录
+#define IDD_KUGOU_LOGIN_DIALOG          696
+#define IDC_KUGOU_QR_STATIC             1394
+#define IDC_KUGOU_LOGIN_STATUS_STATIC   1395
+#define IDC_KUGOU_REFRESH_BUTTON        1396
 // 在线音乐搜索相关
 #define IDD_ONLINE_MUSIC_DIALOG         695
 #define IDC_ONLINE_KEYWORD_EDIT         1390
@@ -1101,9 +1106,9 @@
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        696
+#define _APS_NEXT_RESOURCE_VALUE        697
 #define _APS_NEXT_COMMAND_VALUE         33521
-#define _APS_NEXT_CONTROL_VALUE         1394
+#define _APS_NEXT_CONTROL_VALUE         1397
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

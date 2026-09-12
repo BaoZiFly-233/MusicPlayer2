@@ -296,7 +296,8 @@
     <ClInclude Include="ListItem.h" />
     <ClInclude Include="ListSearchCache.h" />
     <ClInclude Include="LyricRelateDlg.h" />
-    <ClInclude Include="KugouCrypto.h" />
+        <ClInclude Include="KugouLoginDlg.h" />
+<ClInclude Include="KugouCrypto.h" />
     <ClInclude Include="KugouSource.h" />
     <ClInclude Include="md5.h" />
     <ClInclude Include="MediaLibItemPropertiesDlg.h" />
@@ -550,7 +551,8 @@
     <ClCompile Include="ListItem.cpp" />
     <ClCompile Include="ListSearchCache.cpp" />
     <ClCompile Include="LyricRelateDlg.cpp" />
-    <ClCompile Include="KugouCrypto.cpp" />
+        <ClCompile Include="KugouLoginDlg.cpp" />
+<ClCompile Include="KugouCrypto.cpp" />
     <ClCompile Include="KugouSource.cpp" />
     <ClCompile Include="md5.cpp" />
     <ClCompile Include="MediaLibItemPropertiesDlg.cpp" />

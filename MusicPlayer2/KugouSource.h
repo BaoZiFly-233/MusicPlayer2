@@ -95,8 +95,9 @@ protected:
         const std::string& body, nlohmann::json& out_json, bool need_sign = true);
 
     // 登录接口在另一个域名上，用 Web 签名且不带公共参数，所以单独一个函数。
+    // 会往 params 里补公共参数，所以传入的是可修改的引用
     bool RequestLoginApi(const std::wstring& url_path,
-        const std::vector<std::pair<std::string, std::string>>& params,
+        std::vector<std::pair<std::string, std::string>>& params,
         nlohmann::json& out_json);
 
     // 取歌播放地址。返回空字符串表示失败。
