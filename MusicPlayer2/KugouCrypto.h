@@ -57,6 +57,10 @@ struct SignParam
 // 计算 signature。params 会自动按 key 排序，调用方不必先排。
 std::string SignatureAndroid(const std::vector<SignParam>& params, const std::string& body = std::string());
 
+// Web 版签名，登录相关接口（获取二维码等）用它。
+// 算法与 Android 版相同，只是 salt 不同。
+std::string SignatureWeb(const std::vector<SignParam>& params);
+
 // 计算 v5 取址接口的 key（该接口不签名，但需要 key）
 //   MD5( hash + salt + appid + mid + userid )
 std::string CalcV5Key(const std::string& hash, const std::string& mid, const std::string& userid);

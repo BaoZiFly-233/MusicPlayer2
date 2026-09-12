@@ -10,6 +10,9 @@ using namespace std;
 namespace kugou
 {
 
+// Web 版签名用的 salt，登录相关接口（获取二维码等）用它
+static const char* WEB_SALT = "NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt";
+
 string ToUtf8(const wstring& wstr)
 {
     if (wstr.empty())
@@ -165,7 +168,9 @@ string CalculateMid(const string& guid)
     return HexToDecimal(Md5Hex(guid));
 }
 
-string SignatureAndroid(const vector<SignParam>& params, const string& body)
+// 签名算法：把 salt 前后各夹一次，中间放「按 key 排序后的 k=v 拼接」和请求体。
+// Android 版和 Web 版只差一个 salt，所以共用这里的实现。
+static string SignatureWithSalt(const vector<SignParam>& params, const string& body, const char* salt)
 {
     // 按 key 的字节序排序
     vector<SignParam> sorted = params;
@@ -183,12 +188,22 @@ string SignatureAndroid(const vector<SignParam>& params, const string& body)
 
     string raw;
     raw.reserve(joined.size() + body.size() + 64);
-    raw += LITE_ANDROID_SALT;
+    raw += salt;
     raw += joined;
     raw += body;
-    raw += LITE_ANDROID_SALT;
+    raw += salt;
 
     return Md5Hex(raw);
+}
+
+string SignatureAndroid(const vector<SignParam>& params, const string& body)
+{
+    return SignatureWithSalt(params, body, LITE_ANDROID_SALT);
+}
+
+string SignatureWeb(const vector<SignParam>& params)
+{
+    return SignatureWithSalt(params, string(), WEB_SALT);
 }
 
 string CalcV5Key(const string& hash, const string& mid, const string& userid)
