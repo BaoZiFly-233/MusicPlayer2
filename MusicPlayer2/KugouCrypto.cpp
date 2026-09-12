@@ -467,67 +467,47 @@ string AesDecryptForRegister(const string& cipher_base64, const string& key6)
 
 string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
 {
-    // 用 CNG（BCrypt）而不是老的 CryptoAPI：填充方式能明确指定成 PKCS#1 v1.5，
-    // 老的 CryptEncrypt 加密出来的结果服务端不认（会返回 rsa failure）。
+    // 这里用的是酷狗概念版的 RSA 公钥。它是固定常量，所以直接把 CNG 需要的
+    // BCRYPT_RSAPUBLIC_BLOB 字节写死，不再运行时解析 X.509 —— 之前手写的解析
+    // 一直取错模数（漏了 DER 给正数补的那个 0x00），导致加密出废密文。
+    //
+    // 对应的模数（128 字节）摘要，便于以后核对：
+    //   SHA1 = f0c8cd9790d89910b4695e63e1959b5992940a6f
+    //   前 16 字节 = c40a2d0da76511f3bb1cc2bbd3afbd8b
+    static const BYTE kLiteRsaPublicBlob[] = {
+    0x52, 0x53, 0x41, 0x31, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00,
+    0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x01, 0xc4, 0x0a, 0x2d, 0x0d, 0xa7, 0x65, 0x11, 0xf3, 0xbb,
+    0x1c, 0xc2, 0xbb, 0xd3, 0xaf, 0xbd, 0x8b, 0xea, 0x83, 0xb4, 0xd6, 0xb0,
+    0x5b, 0x6c, 0x13, 0xeb, 0x89, 0x20, 0xc5, 0x3f, 0x1a, 0xf7, 0x67, 0x9b,
+    0x32, 0xba, 0x0d, 0x0e, 0xdb, 0x84, 0x32, 0x40, 0xef, 0x1b, 0x83, 0x6e,
+    0xfe, 0xd3, 0xee, 0x24, 0x07, 0x34, 0xc1, 0x4c, 0x13, 0x99, 0xfd, 0x65,
+    0x94, 0xd1, 0x6a, 0xf2, 0x2f, 0x52, 0x52, 0x5d, 0x14, 0xd7, 0x2e, 0x01,
+    0x55, 0xc6, 0xdc, 0xc8, 0x63, 0x8d, 0x4f, 0x7b, 0xb9, 0x4f, 0x3a, 0x0b,
+    0x1f, 0x4c, 0x29, 0xf9, 0x91, 0x97, 0x2f, 0x2a, 0x16, 0x0a, 0x25, 0xeb,
+    0x0a, 0x9e, 0x72, 0x43, 0x36, 0xbe, 0x7f, 0x69, 0xbb, 0xd3, 0x19, 0xff,
+    0xab, 0x1c, 0x6d, 0xd8, 0x47, 0x0b, 0x02, 0x1d, 0xc4, 0x34, 0xf3, 0xfa,
+    0xba, 0x89, 0xf4, 0xa2, 0xa0, 0x1b, 0x33, 0xbd, 0xbd, 0xd0, 0x8b,
+    };
+
+    (void)public_key_base64;    // 保留参数是为了以后换公钥时方便
+
     BCRYPT_ALG_HANDLE alg = nullptr;
     BCRYPT_KEY_HANDLE key = nullptr;
-    vector<BYTE> blob;
     vector<BYTE> cipher;
     string result;
 
     do
     {
-        string der = DecodeBase64(public_key_base64);
-        if (der.empty())
-            break;
-
-        // 公钥是 X.509 SubjectPublicKeyInfo，先解出指数和模数
-        CERT_PUBLIC_KEY_INFO* info = nullptr;
-        DWORD info_len = 0;
-        if (!CryptDecodeObjectEx(X509_ASN_ENCODING, X509_PUBLIC_KEY_INFO,
-            reinterpret_cast<const BYTE*>(der.data()), static_cast<DWORD>(der.size()),
-            CRYPT_DECODE_ALLOC_FLAG, nullptr, &info, &info_len))
-            break;
-
-        // RSAPUBKEY 布局：magic(4) + bitlen(4) + pubexp(4)，之后紧跟模数
-        if (info->PublicKey.cbData < 12)
-        {
-            LocalFree(info);
-            break;
-        }
-
-        const DWORD exp_len = *reinterpret_cast<const DWORD*>(info->PublicKey.pbData + 4);
-        const BYTE* pub_exp = info->PublicKey.pbData + 12;
-        const DWORD mod_len = *reinterpret_cast<const DWORD*>(info->PublicKey.pbData + 8) / 8;
-        const BYTE* modulus = info->PublicKey.pbData + 12 + exp_len;
-
-        if (exp_len == 0 || exp_len > 8 || mod_len == 0
-            || static_cast<DWORD>(info->PublicKey.cbData) < 12 + exp_len + mod_len)
-        {
-            LocalFree(info);
-            break;
-        }
-
-        BCRYPT_RSAKEY_BLOB header{};
-        header.Magic = BCRYPT_RSAPUBLIC_MAGIC;
-        header.BitLength = mod_len * 8;
-        header.cbPublicExp = exp_len;
-        header.cbModulus = mod_len;
-
-        blob.resize(sizeof(header) + exp_len + mod_len);
-        memcpy(blob.data(), &header, sizeof(header));
-        memcpy(blob.data() + sizeof(header), pub_exp, exp_len);
-        memcpy(blob.data() + sizeof(header) + exp_len, modulus, mod_len);
-        LocalFree(info);
-
         if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_RSA_ALGORITHM, nullptr, 0) != 0)
             break;
+
         if (BCryptImportKeyPair(alg, nullptr, BCRYPT_RSAPUBLIC_BLOB, &key,
-            blob.data(), static_cast<ULONG>(blob.size()), 0) != 0)
+            const_cast<PUCHAR>(kLiteRsaPublicBlob), sizeof(kLiteRsaPublicBlob), 0) != 0)
             break;
 
         BCRYPT_PKCS1_PADDING_INFO pad{};
-        pad.pszAlgId = nullptr;     // RSAES-PKCS1-v1_5 不使用这个字段
+        pad.pszAlgId = nullptr;     // RSAES-PKCS1-v1_5 不用这个字段
 
         ULONG needed = 0;
         if (BCryptEncrypt(key, reinterpret_cast<PUCHAR>(const_cast<char*>(plain.data())),
@@ -542,13 +522,13 @@ string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
             break;
         cipher.resize(needed);
 
-        // CNG 的 RSA 密文是小端序，而服务端要的是标准的大端序，所以这里反转字节
+        // CNG 输出的就是标准大端序（和 OpenSSL 一致），不要反转
         static const char* hex = "0123456789abcdef";
         result.reserve(cipher.size() * 2);
-        for (auto it = cipher.rbegin(); it != cipher.rend(); ++it)
+        for (BYTE b : cipher)
         {
-            result.push_back(hex[*it >> 4]);
-            result.push_back(hex[*it & 0x0F]);
+            result.push_back(hex[b >> 4]);
+            result.push_back(hex[b & 0x0F]);
         }
     } while (false);
 
