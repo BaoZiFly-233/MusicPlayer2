@@ -154,6 +154,19 @@ BOOL CMusicPlayerApp::InitInstance()
                     kugou::CKugouSource* kg = static_cast<kugou::CKugouSource*>(src);
                     log << L"  设备 mid = " << kugou::FromUtf8(kg->GetIdentity().mid) << L"\r\n";
                     log << L"  登录状态 = " << (kg->IsLoggedIn() ? L"已登录" : L"未登录") << L"\r\n";
+                    log << L"  当前 dfid = " << kugou::FromUtf8(kg->GetIdentity().dfid) << L"\r\n";
+
+                    // 注册设备换取 dfid（取播放地址前需要它）
+                    if (kg->RegisterDevice())
+                    {
+                        log << L"  设备注册: 成功  dfid=" << kugou::FromUtf8(kg->GetIdentity().dfid) << L"\r\n";
+                        kg->SaveIdentity(m_config_dir);     // 存下来，下次不用重新注册
+                    }
+                    else
+                    {
+                        log << L"  设备注册: 失败（" << kg->GetLastError() << L"）\r\n";
+                    }
+                    log << L"\r\n";
 
                     // 顺带验证登录接口能否取到二维码
                     std::wstring qr;

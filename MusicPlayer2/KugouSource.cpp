@@ -6,6 +6,8 @@
 #include <ctime>
 #include <algorithm>
 #include <sstream>
+#include <winhttp.h>
+#pragma comment(lib, "winhttp.lib")
 
 using namespace std;
 using json = nlohmann::json;
@@ -552,6 +554,222 @@ bool CKugouSource::RequestLoginApi(const wstring& url_path,
     }
 }
 
+// ---------------------------------------------------------------------------
+// 设备注册
+// ---------------------------------------------------------------------------
+
+// 概念版客户端的 RSA 公钥（从官方客户端里提取的公开常量）
+static const char* LITE_RSA_PUBLIC_KEY =
+    "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDECi0Np2UR87scwrvTr72L6oO01rBbbBPriSDFPxr3Z5syug0O24QyQO8bg27+0+4kBzTBTBOZ/WWU0WryL1JSXRTXLgFVxtzIY41Pe7lPOgsfTCn5kZcvKhYKJesKnnJDNr5/abvTGf+rHG3YRwsCHcQ08/q6ifSioBszvb3QiwIDAQAB";
+
+// 发一个 POST 请求并把响应当二进制读回来。
+// 设备注册的响应是 AES 密文，用项目原有的文本式读取会被破坏，所以这里单独实现。
+static bool HttpPostBinary(const wstring& url, const string& headers,
+    const string& body, vector<BYTE>& out_bytes)
+{
+    out_bytes.clear();
+
+    wstring rest = url;
+    if (rest.compare(0, 8, L"https://") == 0)
+        rest = rest.substr(8);
+    else if (rest.compare(0, 7, L"http://") == 0)
+        rest = rest.substr(7);
+    else
+        return false;
+
+    const bool https = (url.compare(0, 8, L"https://") == 0);
+
+    size_t slash = rest.find(L'/');
+    wstring host = (slash == wstring::npos) ? rest : rest.substr(0, slash);
+    wstring path = (slash == wstring::npos) ? L"/" : rest.substr(slash);
+
+    HINTERNET session = WinHttpOpen(L"MusicPlayer2",
+        WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (session == nullptr)
+        return false;
+    WinHttpSetTimeouts(session, 10000, 10000, 30000, 30000);
+
+    bool ok = false;
+    const INTERNET_PORT port = https ? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
+    HINTERNET connect = WinHttpConnect(session, host.c_str(), port, 0);
+    if (connect != nullptr)
+    {
+        HINTERNET request = WinHttpOpenRequest(connect, L"POST", path.c_str(),
+            nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
+            https ? WINHTTP_FLAG_SECURE : 0);
+        if (request != nullptr)
+        {
+            wstring wh = FromUtf8(headers);
+            BOOL sent = WinHttpSendRequest(request,
+                wh.empty() ? WINHTTP_NO_ADDITIONAL_HEADERS : wh.c_str(),
+                static_cast<DWORD>(wh.size()),
+                body.empty() ? WINHTTP_NO_REQUEST_DATA : const_cast<char*>(body.data()),
+                static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0);
+
+            if (sent && WinHttpReceiveResponse(request, nullptr))
+            {
+                DWORD available = 0;
+                while (WinHttpQueryDataAvailable(request, &available) && available > 0)
+                {
+                    size_t offset = out_bytes.size();
+                    out_bytes.resize(offset + available);
+                    DWORD read = 0;
+                    if (!WinHttpReadData(request, out_bytes.data() + offset, available, &read) || read == 0)
+                    {
+                        out_bytes.resize(offset);
+                        break;
+                    }
+                    out_bytes.resize(offset + read);
+                }
+                ok = !out_bytes.empty();
+            }
+            WinHttpCloseHandle(request);
+        }
+        WinHttpCloseHandle(connect);
+    }
+    WinHttpCloseHandle(session);
+    return ok;
+}
+bool CKugouSource::RegisterDevice()
+{
+    m_last_error.clear();
+
+    // 伪造一份安卓设备档案。字段和取值参考官方客户端，不必改。
+    json info;
+    info["availableRamSize"] = 4983533568LL;
+    info["availableRomSize"] = 48114719;
+    info["availableSDSize"] = 48114717;
+    info["basebandVer"] = "";
+    info["batteryLevel"] = 100;
+    info["batteryStatus"] = 3;
+    info["brand"] = "Redmi";
+    info["buildSerial"] = "unknown";
+    info["device"] = "marble";
+    info["imei"] = m_device.guid;
+    info["imsi"] = "";
+    info["manufacturer"] = "Xiaomi";
+    info["uuid"] = m_device.guid;
+    info["accelerometer"] = false;
+    info["accelerometerValue"] = "";
+    info["gravity"] = false;
+    info["gravityValue"] = "";
+    info["gyroscope"] = false;
+    info["gyroscopeValue"] = "";
+    info["light"] = false;
+    info["lightValue"] = "";
+    info["magnetic"] = false;
+    info["magneticValue"] = "";
+    info["orientation"] = false;
+    info["orientationValue"] = "";
+    info["pressure"] = false;
+    info["pressureValue"] = "";
+    info["step_counter"] = false;
+    info["step_counterValue"] = "";
+    info["temperature"] = false;
+    info["temperatureValue"] = "";
+
+    // 请求体是设备信息的 AES 密文（Base64），服务端响应用同一把 key 加密
+    string aes_key = RandomKey6();
+    string body = EncodeBase64(AesEncryptForRegister(info.dump(), aes_key));
+
+    // p 参数：把 AES key 和账号信息用 RSA 加密后交给服务端
+    json key_info;
+    key_info["aes"] = aes_key;
+    key_info["uid"] = m_account.IsLoggedIn() ? m_account.userid : "0";
+    key_info["token"] = m_account.token;
+    string p = RsaEncryptPkcs1(key_info.dump(), LITE_RSA_PUBLIC_KEY);
+    if (p.empty())
+    {
+        m_last_error = L"设备注册失败：RSA 加密出错";
+        return false;
+    }
+
+    char clienttime[32]{};
+    sprintf_s(clienttime, "%lld", static_cast<long long>(time(nullptr)));
+    string userid = m_account.IsLoggedIn() ? m_account.userid : "0";
+
+    // 这个接口要 Android 签名，而且签名里要带上 AES 密文作为请求体
+    vector<SignParam> sign_params = {
+        { "dfid",       "-" },
+        { "mid",        m_device.mid },
+        { "uuid",       "-" },
+        { "appid",      LITE_APPID },
+        { "clientver",  LITE_CLIENTVER },
+        { "clienttime", clienttime },
+        { "userid",     userid },
+        { "part",       "1" },
+        { "platid",     "1" },
+        { "p",          p },
+    };
+    string signature = SignatureAndroid(sign_params, body);
+
+    string query;
+    for (const SignParam& sp : sign_params)
+    {
+        if (!query.empty())
+            query += '&';
+        query += sp.key;
+        query += '=';
+        query += UrlEncode(sp.value);
+    }
+    query += "&signature=";
+    query += signature;
+
+    wstring url = L"https://userservice.kugou.com/risk/v2/r_register_dev?" + FromUtf8(query);
+
+    string headers;
+    headers += "User-Agent: " + string(DEFAULT_USER_AGENT) + "\r\n";
+    headers += "Content-Type: application/octet-stream\r\n";
+    headers += "dfid: -\r\n";
+    headers += "mid: " + m_device.mid + "\r\n";
+    headers += "clienttime: " + string(clienttime) + "\r\n";
+    headers += "kg-rc: 1\r\n";
+    headers += "kg-thash: " + string(KG_THASH) + "\r\n";
+    headers += "kg-rec: 1\r\n";
+    headers += "kg-rf: " + string(KG_RF) + "\r\n";
+
+    vector<BYTE> raw;
+    if (!HttpPostBinary(url, headers, body, raw))
+    {
+        m_last_error = L"设备注册失败：网络请求出错";
+        return false;
+    }
+
+    // 响应体是 AES 密文，先转 Base64 再解密
+    string cipher_b64 = EncodeBase64(string(raw.begin(), raw.end()));
+    string plain = AesDecryptForRegister(cipher_b64, aes_key);
+    if (plain.empty())
+    {
+        // 解不开说明服务端没返回密文，多半是明文报错，直接把内容带出来
+        m_last_error = L"设备注册失败：" + FromUtf8(string(raw.begin(), raw.end()));
+        return false;
+    }
+
+    try
+    {
+        json result = json::parse(plain);
+        if (result.value("status", 0) != 1 || !result.contains("data"))
+        {
+            m_last_error = L"设备注册被拒绝（" + FromUtf8(plain.substr(0, 120)) + L"）";
+            return false;
+        }
+
+        string dfid = result["data"].value("dfid", "");
+        if (dfid.empty())
+        {
+            m_last_error = L"设备注册成功但没返回 dfid";
+            return false;
+        }
+
+        m_device.dfid = dfid;
+        return true;
+    }
+    catch (const json::exception&)
+    {
+        m_last_error = L"设备注册返回内容无法识别";
+        return false;
+    }
+}
 bool CKugouSource::GetQrCode(wstring& qr_content)
 {
     qr_content.clear();

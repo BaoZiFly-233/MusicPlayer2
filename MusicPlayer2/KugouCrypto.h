@@ -72,4 +72,27 @@ std::string UrlEncode(const std::string& str);
 // 非法字符会被跳过，解码失败时返回空串。
 std::string DecodeBase64(const std::string& encoded);
 
+// Base64 编码（设备注册要提交 Base64 密文）
+std::string EncodeBase64(const std::string& raw);
+
+// ---- 设备注册用的加密原语 ----
+//
+// 流程：设备信息 JSON 用一把随机 6 位 key 做 AES-128-CBC 加密，得到请求体；
+// 再用 RSA(PKCS1) 把「这把 key + 账号信息」加密成 p 参数一起提交。
+// 服务端返回的响应体也用同一把 key 加密，所以 key 要留着。
+
+// AES-128-CBC 加密。key 和 IV 都取自 MD5(key6) 的十六进制字符串：
+// 前 16 个字符作 key，后 16 个字符作 IV（各 16 字节）。
+std::string AesEncryptForRegister(const std::string& plain, const std::string& key6);
+
+// 对应的解密（响应体是 Base64 的密文）
+std::string AesDecryptForRegister(const std::string& cipher_base64, const std::string& key6);
+
+// RSA 公钥加密，PKCS#1 v1.5 填充，输出十六进制小写字符串。
+// public_key_base64 是 X.509 SubjectPublicKeyInfo 的 Base64（不带 PEM 头尾）。
+std::string RsaEncryptPkcs1(const std::string& plain, const std::string& public_key_base64);
+
+// 生成一个 6 位小写随机串，用作设备注册的 AES key
+std::string RandomKey6();
+
 } // namespace kugou
