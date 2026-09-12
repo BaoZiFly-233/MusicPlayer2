@@ -68,6 +68,19 @@ MusicPlayer2.exe --test-source
 
 日志在 `%APPDATA%\MusicPlayer2\` 下。
 
+## 开发者注意事项
+
+这个项目的源文件要求 **UTF-8 带 BOM**。如果 BOM 丢了，MSVC 会按 GBK(936) 去解 UTF-8 的中文注释，然后报出一堆看不懂的语法错误——这是改这个代码库最容易踩的坑。
+
+改完代码先跑一下检查：
+
+```powershell
+pwsh -File scripts/check-bom.ps1        # 检查改动过的文件
+pwsh -File scripts/check-bom.ps1 -Fix   # 缺 BOM 就自动补上
+```
+
+脚本默认只检查相对 git 有改动的文件。仓库里有几十个上游文件本来就没有 BOM（纯 ASCII 或 GBK），它们能正常编译，不要动；想看全部加 `-All`。
+
 ## 使用须知
 
 - 这个项目是基于公开接口做的第三方客户端，**仅供个人学习和技术研究**，请勿用于商业用途。
