@@ -5,6 +5,7 @@
 #include "IniHelper.h"
 #include <ctime>
 #include <algorithm>
+#include <sstream>
 
 using namespace std;
 using json = nlohmann::json;
@@ -480,6 +481,158 @@ bool CKugouSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
     {
         return false;
     }
+}
+
+// ---------------------------------------------------------------------------
+// 扫码登录
+// ---------------------------------------------------------------------------
+
+// 登录接口在 login-user.kugou.com，用 Web 签名，参数不带那套公共参数，
+// 所以单独走这里，不复用 Request()。
+// 注意：签名要用参数的「原始值」，拼进 URL 时才做 URL 编码，顺序不能反。
+bool CKugouSource::RequestLoginApi(const wstring& url_path,
+    const vector<pair<string, string>>& params, json& out_json)
+{
+    vector<SignParam> sign_params;
+    for (const auto& kv : params)
+        sign_params.push_back({ kv.first, kv.second });
+    string signature = SignatureWeb(sign_params);
+
+    string query;
+    for (const auto& kv : params)
+    {
+        if (!query.empty())
+            query += '&';
+        query += kv.first;
+        query += '=';
+        query += UrlEncode(kv.second);
+    }
+    if (!query.empty())
+        query += '&';
+    query += "signature=";
+    query += signature;
+
+    wstring url = L"https://login-user.kugou.com" + url_path + L"?" + FromUtf8(query);
+
+    string headers;
+    headers += "User-Agent: " + string(DEFAULT_USER_AGENT) + "\r\n";
+
+    wstring result;
+    if (CInternetCommon::HttpGet(url, result, FromUtf8(headers), false) != CInternetCommon::SUCCESS
+        || result.empty())
+    {
+        m_last_error = L"网络请求失败";
+        return false;
+    }
+
+    try
+    {
+        out_json = json::parse(ToUtf8(result));
+        return true;
+    }
+    catch (const json::exception&)
+    {
+        m_last_error = L"登录接口返回的内容无法识别";
+        return false;
+    }
+}
+
+bool CKugouSource::GetQrCode(wstring& qr_content)
+{
+    qr_content.clear();
+    m_last_error.clear();
+
+    // 概念版客户端用 appid=1001，平台固定 4
+    vector<pair<string, string>> params = {
+        { "appid",      "1001" },
+        { "type",       "1" },
+        { "plat",       "4" },
+        { "srcappid",   "2919" },
+        { "qrcode_txt", "https://h5.kugou.com/apps/loginQRCode/html/index.html?appid=1001&" },
+    };
+
+    json response;
+    if (!RequestLoginApi(L"/v2/qrcode", params, response))
+        return false;
+
+    if (response.value("status", 0) != 1 || !response.contains("data"))
+    {
+        // 接口目前返回 error_code 20010。带上原话方便以后排查。
+        string dumped = response.dump();
+        if (dumped.size() > 160)
+            dumped = dumped.substr(0, 160);
+        m_last_error = L"获取登录二维码失败（接口返回：" + FromUtf8(dumped) + L"）";
+        return false;
+    }
+
+    string key = response["data"].value("qrcode", "");
+    if (key.empty())
+    {
+        m_last_error = L"登录接口没有返回二维码";
+        return false;
+    }
+
+    m_qr_key = FromUtf8(key);
+    qr_content = L"https://h5.kugou.com/apps/loginQRCode/html/index.html?qrcode=" + m_qr_key;
+    return true;
+}
+
+CKugouSource::QrStatus CKugouSource::CheckQrCode()
+{
+    if (m_qr_key.empty())
+    {
+        m_last_error = L"还没有获取二维码";
+        return QrStatus::Failed;
+    }
+
+    vector<pair<string, string>> params = {
+        { "plat",     "4" },
+        { "appid",    "3116" },
+        { "srcappid", "2919" },
+        { "qrcode",   ToUtf8(m_qr_key) },
+        { "dev",      m_device.server_dev },
+    };
+
+    json response;
+    if (!RequestLoginApi(L"/v2/get_userinfo_qrcode", params, response))
+        return QrStatus::Failed;
+
+    if (!response.contains("data"))
+        return QrStatus::Failed;
+
+    const auto& data = response["data"];
+    int status = data.value("status", -1);
+
+    // 0 过期 / 1 等待扫码 / 2 待确认 / 4 授权成功
+    switch (status)
+    {
+    case 0:
+        return QrStatus::Expired;
+    case 1:
+        return QrStatus::Waiting;
+    case 2:
+        return QrStatus::Scanned;
+    case 4:
+    {
+        m_account.token = data.value("token", "");
+        m_account.userid = data.value("userid", "");
+        if (m_account.token.empty() || m_account.userid.empty())
+        {
+            m_last_error = L"登录成功但没拿到账号信息";
+            return QrStatus::Failed;
+        }
+        m_last_error.clear();
+        return QrStatus::Authorized;
+    }
+    default:
+        m_last_error = L"登录状态异常（返回 " + to_wstring(status) + L"）";
+        return QrStatus::Failed;
+    }
+}
+void CKugouSource::Logout()
+{
+    m_account = Account();
+    m_qr_key.clear();
 }
 
 } // namespace kugou

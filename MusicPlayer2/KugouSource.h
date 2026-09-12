@@ -66,6 +66,27 @@ public:
     // 上一次解析失败的原因，可直接显示给用户
     std::wstring GetLastError() const override { return m_last_error; }
 
+    // ---- 扫码登录 ----
+    // 登录流程：GetQrCode 拿二维码内容 -> 用户用酷狗App扫 -> 反复 CheckQrCode
+    // 直到返回已授权，此时账号信息会写进 m_account。
+    enum class QrStatus
+    {
+        Expired,        // 二维码过期，需要重新获取
+        Waiting,        // 等待扫码
+        Scanned,        // 已扫码，等待用户在手机上确认
+        Authorized,     // 授权成功，已拿到 token
+        Failed,         // 出错
+    };
+
+    // 获取登录二维码，返回给用户去扫的内容（一个网址）
+    bool GetQrCode(std::wstring& qr_content);
+
+    // 查询扫码状态。返回 Authorized 时账号已写入，调用方记得 SaveIdentity。
+    QrStatus CheckQrCode();
+
+    // 退出登录（清掉内存里的账号信息，调用方负责保存）
+    void Logout();
+
 protected:
     // 向接口发一个带概念版公共参数和签名的请求。
     // url_path 形如 L"/v3/search/song"；router 用于设置 x-router 头。
@@ -73,12 +94,18 @@ protected:
         const std::vector<std::pair<std::string, std::string>>& extra_params,
         const std::string& body, nlohmann::json& out_json, bool need_sign = true);
 
+    // 登录接口在另一个域名上，用 Web 签名且不带公共参数，所以单独一个函数。
+    bool RequestLoginApi(const std::wstring& url_path,
+        const std::vector<std::pair<std::string, std::string>>& params,
+        nlohmann::json& out_json);
+
     // 取歌播放地址。返回空字符串表示失败。
     std::wstring FetchPlayUrl(const std::wstring& hash, const std::wstring& album_audio_id);
 
     DeviceIdentity m_device;
     Account m_account;
     std::wstring m_last_error;      // 最近一次失败原因
+    std::wstring m_qr_key;          // 当前登录二维码的 key
 };
 
 } // namespace kugou

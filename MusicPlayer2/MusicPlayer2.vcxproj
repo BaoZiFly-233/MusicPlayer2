@@ -431,7 +431,8 @@
     <ClInclude Include="MusicPlayerCmdHelper.h" />
     <ClInclude Include="PlayerProgressBar.h" />
     <ClInclude Include="PlayerToolBar.h" />
-    <ClInclude Include="Playlist.h" />
+        <ClInclude Include="qrcodegen\qrcodegen.hpp" />
+<ClInclude Include="Playlist.h" />
     <ClInclude Include="PlaySettingsDlg.h" />
     <ClInclude Include="GaussBlur.h" />
     <ClInclude Include="IniHelper.h" />
@@ -686,7 +687,10 @@
     <ClCompile Include="MusicPlayerCmdHelper.cpp" />
     <ClCompile Include="PlayerProgressBar.cpp" />
     <ClCompile Include="PlayerToolBar.cpp" />
-    <ClCompile Include="Playlist.cpp" />
+        <ClCompile Include="qrcodegen\qrcodegen.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+<ClCompile Include="Playlist.cpp" />
     <ClCompile Include="PlaySettingsDlg.cpp" />
     <ClCompile Include="GaussBlur.cpp" />
     <ClCompile Include="IniHelper.cpp" />
