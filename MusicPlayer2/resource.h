@@ -1090,13 +1090,20 @@
 #define ID_SONGS_MULTI_VERSION_ITEM_MAX 33511
 #define ID_LIST_ITEM_PREVIEW            33512
 
+// 在线音乐搜索相关
+#define IDD_ONLINE_MUSIC_DIALOG         695
+#define IDC_ONLINE_KEYWORD_EDIT         1390
+#define IDC_ONLINE_SEARCH_BUTTON        1391
+#define IDC_ONLINE_SOURCE_COMBO         1392
+#define IDC_ONLINE_RESULT_LIST          1393
+#define ID_ONLINE_MUSIC                 33520
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        694
-#define _APS_NEXT_COMMAND_VALUE         33513
-#define _APS_NEXT_CONTROL_VALUE         1387
+#define _APS_NEXT_RESOURCE_VALUE        696
+#define _APS_NEXT_COMMAND_VALUE         33521
+#define _APS_NEXT_CONTROL_VALUE         1394
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

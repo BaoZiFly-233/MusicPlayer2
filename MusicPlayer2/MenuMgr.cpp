@@ -522,6 +522,7 @@ void MenuMgr::CreateMenu(MenuBase& menu)
         menu.CreateMenu(true, true);
         menu.AppendItem(EX_ID(ID_MEDIA_LIB), IconMgr::IconType::IT_Media_Lib);
         menu.AppendItem(EX_ID(ID_FIND), IconMgr::IconType::IT_Find);
+        menu.AppendItem(EX_ID(ID_ONLINE_MUSIC), IconMgr::IconType::IT_Online);
         menu.AppendItem(EX_ID(ID_EXPLORE_PATH), IconMgr::IconType::IT_Folder_Explore);
         menu.AppendItem(EX_ID(ID_SONG_INFO), IconMgr::IconType::IT_Info);
         menu.AppendItem(EX_ID(ID_EQUALIZER), IconMgr::IconType::IT_Equalizer);
