@@ -1167,6 +1167,20 @@ bool CTagLibHelper::WriteMpegLyric(const std::wstring& file_path, const std::wst
     return saved;
 }
 
+wstring CTagLibHelper::GetOggLyric(const wstring& file_path)
+{
+    Ogg::Vorbis::File file(file_path.c_str());
+    const auto properties = file.properties();
+    return properties.contains("LYRICS") && !properties["LYRICS"].isEmpty() ? properties["LYRICS"].front().toWString() : L"";
+}
+bool CTagLibHelper::WriteOggLyric(const wstring& file_path, const wstring& lyrics)
+{
+    Ogg::Vorbis::File file(file_path.c_str());
+    if (!file.isValid() || !file.tag()) return false;
+    file.tag()->addField("LYRICS", String(lyrics), true);
+    return file.save();
+}
+
 bool CTagLibHelper::WriteFlacLyric(const std::wstring& file_path, const std::wstring& lyric_contents)
 {
     FLAC::File file(file_path.c_str());

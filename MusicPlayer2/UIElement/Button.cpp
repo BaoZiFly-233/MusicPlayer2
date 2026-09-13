@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "Button.h"
 #include "Player.h"
+#include "OnlineMediaCache.h"
 #include "UserUI.h"
 #include "Helper/UiElementHelper.h"
 
@@ -12,6 +13,14 @@ void UiElement::Button::Draw()
     {
         switch (key)
         {
+        case CPlayerUIBase::BTN_DOWNLOAD_CURRENT:
+        {
+            const auto& path = CPlayer::GetInstance().GetCurrentFilePath();
+            const auto label = online::COnlineMediaCache::Instance().DownloadLabel(path);
+            m_btn.enable &= online::CSourceRegistry::IsVirtualPath(path) && label != L"下载中";
+            ui->DrawUIButton(rect, m_btn, GetBtnIconType(), big_icon, show_text ? label : L"", font_size, false, align, btn_background);
+            break;
+        }
         case CPlayerUIBase::BTN_TRANSLATE:
         {
             static const wstring& btn_str = theApp.m_str_table.LoadText(L"UI_TXT_BTN_TRANSLATE");
@@ -104,6 +113,10 @@ void UiElement::Button::FromString(const std::string& key_type)
         key = CPlayerUIBase::BTN_FAVOURITE;
     else if (key_type == "mediaLib")
         key = CPlayerUIBase::BTN_MEDIA_LIB;
+    else if (key_type == "onlineMusic")
+        key = CPlayerUIBase::BTN_ONLINE_MUSIC;
+    else if (key_type == "downloadCurrent")
+        key = CPlayerUIBase::BTN_DOWNLOAD_CURRENT;
     else if (key_type == "showPlaylist")
         key = CPlayerUIBase::BTN_SHOW_PLAYLIST;
     else if (key_type == "addToPlaylist")

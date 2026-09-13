@@ -6,7 +6,7 @@
       <verticalLayout>
         <horizontalLayout>
           <verticalLayout width="134">
-            <navigationBar orientation="vertical" icon_type="icon_and_text" item_height="40" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib"/>
+            <navigationBar orientation="vertical" icon_type="icon_and_text" item_height="40" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib,online_music"/>
             <button key="showSettingsPanel" height="40" show_text="true"/>
           </verticalLayout>
           <stackElement id="ui_big_nav_stack_element" related_stack_elements="ui_narraw_nav_stack_element">
@@ -25,6 +25,7 @@
                   </verticalLayout>
                 </horizontalLayout>
               </rectangle>
+              <horizontalLayout height="28"><placeHolder/><button key="downloadCurrent" width="96" height="28" show_text="true"/></horizontalLayout>
               <lyrics/>
             </verticalLayout>
             <!--播放队列-->
@@ -116,6 +117,7 @@
                 </stackElement>
               </verticalLayout>
             </verticalLayout>
+            <onlineMusic margin="8"/>
           </stackElement>
         </horizontalLayout>
 
@@ -136,6 +138,7 @@
                 <button key="playPause" width="40" height="40" bigIcon="true" margin="2"/>
                 <button key="next" width="40" height="40" bigIcon="true" margin="2"/>
                 <button key="favorite" width="26" height="26" margin="2"/>
+                <button key="downloadCurrent" width="28" height="28" margin="2"/>
               </horizontalLayout>
               <horizontalLayout>
                 <text text="%(CurrentPosition)" font_size="8" width="32" alignment="right"/>
@@ -184,6 +187,7 @@
                   <button key="playPause" width="40" height="40" bigIcon="true" margin="2"/>
                   <button key="next" width="40" height="40" bigIcon="true" margin="2"/>
                   <button key="favorite" width="26" height="26" margin="2"/>
+                  <button key="downloadCurrent" width="28" height="28" margin="2"/>
                 </horizontalLayout>
                 <horizontalLayout>
                   <text text="%(CurrentPosition)" font_size="8" width="32" alignment="right"/>
@@ -212,7 +216,7 @@
         <button key="closePanel" icon="menu" text="%(UI_TXT_CLOSE_NAVIGATION)" width="48"/>
         <placeHolder/>
       </horizontalLayout>
-      <navigationBar orientation="vertical" icon_type="icon_and_text" item_height="48" item_left_space="3" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib"/>
+      <navigationBar orientation="vertical" icon_type="icon_and_text" item_height="48" item_left_space="3" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib,online_music"/>
       <button key="showSettingsPanel" show_text="true" height="48"/>
     </verticalLayout>
   </panel>
@@ -222,7 +226,7 @@
       <horizontalLayout>
         <verticalLayout width="48">
           <button key="showPanel" panel_id="ui_narrow_navigation_panel" icon="menu" text="%(UI_TXT_OPEN_NAVIGATION)" width="48" height="48"/>
-          <navigationBar orientation="vertical" icon_type="icon_only" item_height="48" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib"/>
+          <navigationBar orientation="vertical" icon_type="icon_only" item_height="48" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib,online_music"/>
           <button key="showSettingsPanel" width="48" height="48"/>
         </verticalLayout>
         <stackElement id="ui_narraw_nav_stack_element" related_stack_elements="ui_big_nav_stack_element">
@@ -241,6 +245,7 @@
                 </verticalLayout>
               </horizontalLayout>
             </rectangle>
+            <horizontalLayout height="28"><placeHolder/><button key="downloadCurrent" width="96" height="28" show_text="true"/></horizontalLayout>
             <lyrics/>
           </verticalLayout>
           <!--播放队列-->
@@ -332,6 +337,7 @@
               </stackElement>
             </verticalLayout>
           </verticalLayout>
+          <onlineMusic margin="8"/>
         </stackElement>
       </horizontalLayout>
       <rectangle height="88" no_corner_radius="true">
@@ -339,6 +345,7 @@
           <horizontalLayout height="60">
             <button key="repeatMode" width="26" height="26" margin="2"/>
             <button key="favorite" width="26" height="26" margin="2"/>
+            <button key="downloadCurrent" width="28" height="28" margin="2"/>
             <button key="previous" width="40" height="40" bigIcon="true" margin="2"/>
             <button key="playPause" width="40" height="40" bigIcon="true" margin="2"/>
             <button key="next" width="40" height="40" bigIcon="true" margin="2"/>
@@ -373,6 +380,7 @@
           <horizontalLayout height="44">
             <button key="repeatMode" width="26" height="26" margin="2"/>
             <button key="favorite" width="26" height="26" margin="2"/>
+            <button key="downloadCurrent" width="28" height="28" margin="2"/>
             <button key="previous" width="40" height="40" bigIcon="true" margin="2"/>
             <button key="playPause" width="40" height="40" bigIcon="true" margin="2"/>
             <button key="next" width="40" height="40" bigIcon="true" margin="2"/>

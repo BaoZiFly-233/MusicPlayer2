@@ -35,6 +35,7 @@ public:
     afx_msg void OnSize(UINT nType, int cx, int cy);
     CSearchEditCtrl m_search_box;
     virtual void OnCancel();
+    virtual void OnOK() override;
 
 private:
     UiElement::SearchBox* m_ui_search_box{};

@@ -51,6 +51,7 @@
                 <button key="playPause" width="40" height="40" bigIcon="true" margin="2"/>
                 <button key="next" width="40" height="40" bigIcon="true" margin="2"/>
                 <button key="favorite" width="28" height="28" margin="2"/>
+                <button key="downloadCurrent" width="28" height="28" margin="2"/>
               </horizontalLayout>
               <horizontalLayout margin-right="4">
                 <placeHolder/>
@@ -97,6 +98,7 @@
               <volume show_text="false" width="28" height="28" margin="2"/>
               <button key="repeatMode" width="28" height="28" margin="2"/>
               <button key="favorite" width="28" height="28" margin="2"/>
+              <button key="downloadCurrent" width="28" height="28" margin="2"/>
               <button key="showPlayQueue" width="28" height="28" margin="2"/>
             </horizontalLayout>
           </verticalLayout>
@@ -111,7 +113,7 @@
       <horizontalLayout>
         <!--左侧导航栏-->
         <verticalLayout width="134" margin-top="4" margin-bottom="4">
-          <navigationBar margin="4" orientation="vertical" icon_type="icon_and_text" item_space="4" item_height="36" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib"/>
+          <navigationBar margin="4" orientation="vertical" icon_type="icon_and_text" item_space="4" item_height="36" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib,online_music"/>
           <button key="showSettingsPanel" height="36" margin-left="4" margin-right="4" show_text="true"/>
         </verticalLayout>
         <stackElement margin-top="8" margin-left="16" margin-right="16" id="ui_big_nav_stack_element" related_stack_elements="ui_narraw_nav_stack_element">
@@ -130,6 +132,7 @@
                 </verticalLayout>
               </horizontalLayout>
             </rectangle>
+            <horizontalLayout height="28"><placeHolder/><button key="downloadCurrent" width="96" height="28" show_text="true"/></horizontalLayout>
             <lyrics/>
           </verticalLayout>
           <!--播放队列-->
@@ -221,6 +224,7 @@
               </stackElement>
             </verticalLayout>
           </verticalLayout>
+          <onlineMusic margin="4"/>
         </stackElement>
       </horizontalLayout>
       <!--播放控制栏-->
@@ -249,6 +253,7 @@
               <button key="playPause" width="40" height="40" bigIcon="true" margin="2"/>
               <button key="next" width="40" height="40" bigIcon="true" margin="2"/>
               <button key="favorite" width="28" height="28" margin="2"/>
+              <button key="downloadCurrent" width="28" height="28" margin="2"/>
             </horizontalLayout>
             <horizontalLayout margin-right="4">
               <placeHolder/>
@@ -270,7 +275,7 @@
         <button key="closePanel" icon="menu" text="%(UI_TXT_CLOSE_NAVIGATION)" width="40"/>
         <placeHolder/>
       </horizontalLayout>
-      <navigationBar margin-top="4" margin-bottom="4" orientation="vertical" icon_type="icon_and_text" item_space="4" item_height="36" stack_element_id="ui_narraw_nav_stack_element" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib"/>
+      <navigationBar margin-top="4" margin-bottom="4" orientation="vertical" icon_type="icon_and_text" item_space="4" item_height="36" stack_element_id="ui_narraw_nav_stack_element" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib,online_music"/>
       <button key="showSettingsPanel" show_text="true" height="36"/>
     </verticalLayout>
   </panel>
@@ -281,7 +286,7 @@
       <horizontalLayout>
         <verticalLayout width="48" margin-top="4" margin-bottom="4">
           <button key="showPanel" panel_id="ui_narrow_navigation_panel" icon="menu" text="%(UI_TXT_OPEN_NAVIGATION)" width="40" height="36"/>
-          <navigationBar margin="4" orientation="vertical" icon_type="icon_only" item_space="4" item_height="36" stack_element_id="ui_narraw_nav_stack_element" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib"/>
+          <navigationBar margin="4" orientation="vertical" icon_type="icon_only" item_space="4" item_height="36" stack_element_id="ui_narraw_nav_stack_element" item_list="now_playing,play_queue,recently_played,folder,playlist,my_favourite,media_lib,online_music"/>
           <button key="showSettingsPanel" width="40" height="36"/>
         </verticalLayout>
         <stackElement margin-top="8" margin-left="8" margin-right="8" id="ui_narraw_nav_stack_element" related_stack_elements="ui_big_nav_stack_element">
@@ -299,6 +304,7 @@
                 </verticalLayout>
               </horizontalLayout>
             </rectangle>
+            <horizontalLayout height="28"><placeHolder/><button key="downloadCurrent" width="96" height="28" show_text="true"/></horizontalLayout>
             <lyrics/>
           </verticalLayout>
           <!--播放队列-->
@@ -390,6 +396,7 @@
               </stackElement>
             </verticalLayout>
           </verticalLayout>
+          <onlineMusic margin="4"/>
         </stackElement>
       </horizontalLayout>
       <rectangle height="88" no_corner_radius="true">
@@ -415,6 +422,7 @@
             <volume show_text="false" width="28" height="28" margin="2"/>
             <button key="repeatMode" width="28" height="28" margin="2"/>
             <button key="favorite" width="28" height="28" margin="2"/>
+            <button key="downloadCurrent" width="28" height="28" margin="2"/>
             <button key="showPlayQueue" width="28" height="28" margin="2"/>
           </horizontalLayout>
         </verticalLayout>
@@ -445,6 +453,7 @@
           <horizontalLayout height="44">
             <button key="repeatMode" width="26" height="26" margin="2"/>
             <button key="favorite" width="26" height="26" margin="2"/>
+            <button key="downloadCurrent" width="28" height="28" margin="2"/>
             <button key="previous" width="40" height="40" bigIcon="true" margin="2"/>
             <button key="playPause" width="40" height="40" bigIcon="true" margin="2"/>
             <button key="next" width="40" height="40" bigIcon="true" margin="2"/>

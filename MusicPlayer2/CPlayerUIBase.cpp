@@ -391,6 +391,13 @@ bool CPlayerUIBase::ButtonClicked(BtnKey btn_type, const UIButton& btn)
         theApp.m_pMainWnd->SendMessage(WM_COMMAND, ID_MEDIA_LIB);
         return true;
 
+    case BTN_ONLINE_MUSIC:
+        theApp.m_pMainWnd->PostMessage(WM_COMMAND, ID_ONLINE_MUSIC);
+        return true;
+    case BTN_DOWNLOAD_CURRENT:
+        theApp.m_pMainWnd->PostMessage(WM_COMMAND, ID_DOWNLOAD_CURRENT);
+        return true;
+
     case BTN_FAVOURITE:
         theApp.m_pMainWnd->SendMessage(WM_COMMAND, ID_ADD_REMOVE_FROM_FAVOURITE);
         return true;
@@ -739,6 +746,10 @@ IconMgr::IconType CPlayerUIBase::GetBtnIconType(BtnKey key)
         return IconMgr::IconType::IT_Playlist;
     case BTN_MEDIA_LIB:
         return IconMgr::IconType::IT_Media_Lib;
+    case BTN_ONLINE_MUSIC:
+        return IconMgr::IconType::IT_Online;
+    case BTN_DOWNLOAD_CURRENT:
+        return IconMgr::IconType::IT_Download;
     case BTN_FULL_SCREEN:
     case BTN_FULL_SCREEN_TITLEBAR:
         if (m_ui_data.full_screen)
@@ -841,6 +852,8 @@ std::wstring CPlayerUIBase::GetButtonText(BtnKey key_type) const
     case BTN_NEXT: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_NEXT");
     case BTN_SHOW_PLAYLIST: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_PLAYLIST_SHOW_HIDE");
     case BTN_MEDIA_LIB: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_MEDIA_LIB");
+    case BTN_ONLINE_MUSIC: return L"在线音乐";
+    case BTN_DOWNLOAD_CURRENT: return L"下载";
     case BTN_FULL_SCREEN: return theApp.m_str_table.LoadText(m_ui_data.full_screen ? L"UI_TIP_BTN_FULL_SCREEN_EXIT" : L"UI_TIP_BTN_FULL_SCREEN");
     case BTN_MENU: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_MAIN_MENU");
     case BTN_FAVOURITE: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_FAVOURITE");

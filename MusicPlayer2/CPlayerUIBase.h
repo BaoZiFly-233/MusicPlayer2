@@ -164,6 +164,8 @@ public:
         MENU_TOOLS,
         MENU_HELP,
 
+        BTN_ONLINE_MUSIC,       //在线播放页面
+        BTN_DOWNLOAD_CURRENT,
         BTN_MAX,
     };
 

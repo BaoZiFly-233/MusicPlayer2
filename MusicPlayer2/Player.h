@@ -45,6 +45,8 @@ struct AlbumCoverInfo
 
 class CPlayer
 {
+    friend bool RunOnlineMusicTests(const std::wstring& log_path, bool network);
+    friend class COnlineMusicPreview;
 public:
     //用于向初始化播放列表传递信息的结构体
     struct ThreadInfo
@@ -157,6 +159,11 @@ private:
     inline int GetNextShuffleIdx() const;        //返回乱序播放下下一曲的序号
     inline int GetPrevShuffleIdx() const;        //返回乱序播放下前一曲的序号
     std::list<int> m_random_list;          //随机播放模式下的历史记录，用于回溯之前的记录
+    int m_prepared_random{ -1 };
+    int m_prepared_from_index{ -1 };
+    size_t m_prepared_playlist_size{};
+    SongInfo m_prepared_from_song, m_prepared_random_song;
+    std::vector<int> m_prepared_shuffle;
     deque<int> m_next_tracks{};       //下n首播放的歌曲，用于“下一首播放”
 
     //播放列表模式
@@ -338,6 +345,8 @@ public:
     int AddFilesToPlaylist(const vector<wstring>& files);
     // 向当前播放列表添加歌曲，仅在播放列表模式可用，返回成功添加的数量（拒绝重复曲目）
     int AddSongsToPlaylist(const vector<SongInfo>& songs);
+    // 在线工作区播放或追加歌曲，支持从文件夹模式转入队列；失败时保留原列表。
+    int OpenOnlineSongs(const vector<SongInfo>& songs, bool append);
 
     // 重新载入播放列表（没能取得播放状态锁返回false）
     bool ReloadPlaylist(MediaLibRefreshMode refresh_mode);
@@ -482,6 +491,8 @@ public:
     const SongInfo& GetSafeCurrentSongInfo() const;
     //获取下一个要播放的曲目。如果返回的是空的SongInfo对象，则说明没有下一个曲目或下一个曲目不确定
     SongInfo GetNextTrack() const;
+    // 在播放状态锁内预先确定随机下一曲，不推进当前曲目或历史记录。
+    void PrepareNextTrack();
     //为当前歌曲设置“我喜欢”标记
     void SetFavourite(int index, bool favourite);
     void SetFavourite(bool favourite);
@@ -510,6 +521,8 @@ public:
     void SortPlaylist(bool is_init = false);
     //获取专辑封面
     void SearchAlbumCover();
+    // 由 UI 线程在播放状态锁内应用已完成的在线封面。
+    bool LoadOnlineCover(const std::wstring& song_path, const std::wstring& cover_path);
 private:
     //当无法播放时弹出提示信息
     void ConnotPlayWarning() const;

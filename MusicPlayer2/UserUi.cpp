@@ -3,6 +3,57 @@
 #include "UiSearchBox.h"
 #include "UIPanel/ListPreviewPanel.h"
 #include "UIElement/Helper/UiElementHelper.h"
+#include "UIElement/OnlineMusic.h"
+
+bool CUserUi::IsOnlineMusicVisible()
+{
+    bool visible = false;
+    IterateAllElements([&](UiElement::Element* element) {
+        if (dynamic_cast<UiElement::OnlineMusic*>(element)) { visible = true; return true; }
+        return false;
+    }, true);
+    return visible;
+}
+
+bool CUserUi::ToggleOnlineMusic()
+{
+    auto* online = FindElement<UiElement::OnlineMusic>();
+    if (!online) return false;
+    if (IsOnlineMusicVisible())
+    {
+        if (m_online_previous_pages.empty())
+        {
+            for (auto* parent = online->Parent(); parent; parent = parent->Parent())
+                if (auto* stack = dynamic_cast<UiElement::StackElement*>(parent)) { stack->SetCurrentElement(0); break; }
+        }
+        else for (const auto& page : m_online_previous_pages) page.first->SetCurrentElement(page.second);
+        m_online_previous_pages.clear();
+        return true;
+    }
+    m_online_previous_pages.clear();
+    for (UiElement::Element* child = online; child->Parent(); child = child->Parent())
+    {
+        if (auto* stack = dynamic_cast<UiElement::StackElement*>(child->Parent()))
+        {
+            const auto& children = stack->ChildList();
+            for (size_t i = 0; i < children.size(); ++i)
+                if (children[i].get() == child)
+                {
+                    m_online_previous_pages.emplace_back(stack, stack->GetCurIndex());
+                    stack->SetCurrentElement(static_cast<int>(i));
+                    break;
+                }
+        }
+    }
+    return true;
+}
+
+bool CUserUi::HandleOnlineKey(UINT key, bool control)
+{
+    if (!IsOnlineMusicVisible()) return false;
+    auto* online = FindElement<UiElement::OnlineMusic>();
+    return online && online->HandleKey(key, control);
+}
 
 CUserUi::CUserUi(CWnd* pMainWnd, const std::wstring& xml_path, UIData& ui_data)
     : CPlayerUIBase(ui_data, pMainWnd), m_xml_path(xml_path)
@@ -28,6 +79,7 @@ CUserUi::~CUserUi()
 
 void CUserUi::LoadFromContents(const std::string& xml_contents)
 {
+    m_online_previous_pages.clear();
     tinyxml2::XMLDocument xml_doc;
     xml_doc.Parse(xml_contents.c_str());
     tinyxml2::XMLElement* root = xml_doc.RootElement();

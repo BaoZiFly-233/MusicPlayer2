@@ -25,6 +25,9 @@ public:
     void ResetVolumeToPlayTime();   //定时器SHOW_VOLUME_TIMER_ID响应时需要调用此函数
     void PlaylistLocateToCurrent();     //播放列表控件使正在播放的条目可见
     void ListLocateToCurrent();         //ui中的所有列表使正在播放的条目可见
+    bool ToggleOnlineMusic();
+    bool IsOnlineMusicVisible();
+    bool HandleOnlineKey(UINT key, bool control);
 
     void PlaylistSelectAll();
     void PlaylistSelectNone();
@@ -80,6 +83,7 @@ protected:
     bool m_last_mouse_in_draw_area{};
     CPanelManager m_panel_mgr{ this };
     CPoint m_mouse_clicked_point;
+    std::vector<std::pair<UiElement::StackElement*, int>> m_online_previous_pages;
 
 public:
     virtual int GetUiIndex() override;

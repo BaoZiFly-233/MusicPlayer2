@@ -1,5 +1,6 @@
 ﻿#include "stdafx.h"
 #include "ElementFactory.h"
+#include "OnlineMusic.h"
 
 ////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////
@@ -100,6 +101,14 @@ std::shared_ptr<UiElement::Element> UiElement::CElementFactory::CreateElement(co
         element = std::make_shared<UiElement::EditControl>();
     else if (name == "sliderProgressBar")
         element = std::make_shared<UiElement::SliderProgressBar>();
+    else if (name == "onlineMusic")
+        element = std::make_shared<UiElement::OnlineMusic>();
+    else if (name == "onlineMusicList")
+        element = std::make_shared<UiElement::OnlineMusicList>();
+    else if (name == "onlineMusicSearch")
+        element = std::make_shared<UiElement::OnlineMusicSearch>();
+    else if (name == "onlineMusicDetail")
+        element = std::make_shared<UiElement::OnlineMusicDetail>();
 
     if (element != nullptr)
         element->SetUi(ui);

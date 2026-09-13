@@ -7,6 +7,7 @@
 #include "CHotKeySettingDlg.h"
 #include "MediaLibSettingDlg.h"
 #include "BaseDialog.h"
+#include "OnlineSettingsUI.h"
 
 // COptionsDlg 对话框
 #define TIMER_ID2 1122
@@ -27,6 +28,7 @@ public:
 	CHotKeySettingDlg m_tab5_dlg{ this };		//“全局快捷键”子对话框
 	CMediaLibSettingDlg m_media_lib_dlg{ this };		//“媒体库”子对话框
 
+	COnlineSettingsTabDlg m_online_settings_dlg{ this };
 	int m_tab_selected{};
 
 // 对话框数据

@@ -182,7 +182,7 @@ void CUIDrawer::DrawLyricTextMultiLine(CRect lyric_area, Alignment align, bool s
                     COLORREF text_color = CColorConvert::GetGradientColor(m_colors.color_text_2, m_colors.color_text, fade_percent);
                     //绘制歌词文本
                     SetFont(m_lyric_font);
-                    if (theApp.m_lyric_setting_data.lyric_karaoke_disp)
+                    if (theApp.m_lyric_setting_data.lyric_karaoke_disp && lyric_i.HasWordTiming())
                         DrawWindowText(rect_text, lyric_i.text.c_str(), m_colors.color_text, m_colors.color_text_2, progress, align, true);
                     else
                         DrawWindowText(rect_text, lyric_i.text.c_str(), text_color, text_color, progress, align, true);
@@ -293,7 +293,7 @@ void CUIDrawer::DrawLyricTextSingleLine(CRect rect, int& flag, bool double_line,
                 int fade_percent = last_time_span / 8;         //计算颜色高亮变化的百分比，除数越大则持续时间越长，10则为1秒
                 if (progress == 1000) fade_percent = 0;         // 进度为1000时当前歌词“已完成”不再高亮
                 // 这里的fade_percent当合并空行开启时可能为负，在颜色渐变处规范取值，此处不再处理
-                DrawLyricDoubleLine(lyric_rect, current_lyric.text.c_str(), next_lyric_text.c_str(), align, progress, switch_flag, fade_percent);
+                DrawLyricDoubleLine(lyric_rect, current_lyric.text.c_str(), next_lyric_text.c_str(), align, progress, switch_flag, karaoke && current_lyric.HasWordTiming(), fade_percent);
             }
             else
             {
@@ -311,7 +311,7 @@ void CUIDrawer::DrawLyricTextSingleLine(CRect rect, int& flag, bool double_line,
                 }
                 // 绘制单行歌词
                 SetFont(m_lyric_font);
-                if (theApp.m_lyric_setting_data.lyric_karaoke_disp)
+                if (karaoke && current_lyric.HasWordTiming())
                     DrawWindowText(lyric_rect, current_lyric.text.c_str(), m_colors.color_text, m_colors.color_text_2, progress, align, true);
                 else if (0 < progress && progress < 1000)   // 仅高亮“正在进行”的歌词
                     DrawWindowText(lyric_rect, current_lyric.text.c_str(), m_colors.color_text, m_colors.color_text, progress, align, true);
@@ -480,7 +480,7 @@ int CUIDrawer::DPI(int pixel)
         return theApp.DPI(pixel);
 }
 
-void CUIDrawer::DrawLyricDoubleLine(CRect rect, LPCTSTR lyric, LPCTSTR next_lyric, Alignment align, int progress, bool switch_flag, int fade_percent)
+void CUIDrawer::DrawLyricDoubleLine(CRect rect, LPCTSTR lyric, LPCTSTR next_lyric, Alignment align, int progress, bool switch_flag, bool karaoke, int fade_percent)
 {
     CFont* pOldFont = SetFont(m_lyric_font);
 
@@ -494,7 +494,7 @@ void CUIDrawer::DrawLyricDoubleLine(CRect rect, LPCTSTR lyric, LPCTSTR next_lyri
         up_align = down_align = align;
 
     COLORREF color1, color2;
-    if (theApp.m_lyric_setting_data.lyric_karaoke_disp)
+    if (karaoke)
     {
         color1 = m_colors.color_text;
         color2 = m_colors.color_text_2;

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -302,8 +302,17 @@
     <ClInclude Include="md5.h" />
     <ClInclude Include="MediaLibItemPropertiesDlg.h" />
     <ClInclude Include="NeteaseLyricDownload.h" />
-        <ClInclude Include="OnlineMusicDlg.h" />
-<ClInclude Include="OnlineSource.h" />
+    <ClInclude Include="OnlineMusicModel.h" />
+    <ClInclude Include="UIElement\OnlineMusic.h" />
+    <ClInclude Include="OnlineSource.h" />
+    <ClInclude Include="OnlineMediaCache.h" />
+    <ClInclude Include="OnlineSettings.h" />
+    <ClInclude Include="OnlineSettingsUI.h" />
+    <ClInclude Include="OnlineDailyRewards.h" />
+    <ClInclude Include="OnlineJson.h" />
+    <ClInclude Include="OnlineHttp.h" />
+    <ClInclude Include="OnlineMusicTests.h" />
+    <ClInclude Include="OnlineMusicPreview.h" />
     <ClInclude Include="PlaylistPropertiesDlg.h" />
     <ClInclude Include="SimplePropertiesDlg.h" />
     <ClInclude Include="UIDialog\UIDialog.h" />
@@ -557,8 +566,13 @@
     <ClCompile Include="md5.cpp" />
     <ClCompile Include="MediaLibItemPropertiesDlg.cpp" />
     <ClCompile Include="NeteaseLyricDownload.cpp" />
-        <ClCompile Include="OnlineMusicDlg.cpp" />
-<ClCompile Include="OnlineSource.cpp" />
+    <ClCompile Include="OnlineMusicModel.cpp" />
+    <ClCompile Include="UIElement\OnlineMusic.cpp" />
+    <ClCompile Include="OnlineSource.cpp" />
+    <ClCompile Include="OnlineMediaCache.cpp" />
+    <ClCompile Include="OnlineSettings.cpp" />
+    <ClCompile Include="OnlineSettingsUI.cpp" />
+    <ClCompile Include="OnlineDailyRewards.cpp" />
     <ClCompile Include="PlaylistPropertiesDlg.cpp" />
     <ClCompile Include="SimplePropertiesDlg.cpp" />
     <ClCompile Include="UIDialog\UIDialog.cpp" />

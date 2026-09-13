@@ -177,6 +177,7 @@ public:
     DECLARE_MESSAGE_MAP()
     afx_msg void OnHelp();
     virtual int ExitInstance();
+    int m_test_exit_code{ -1 };
     afx_msg void OnHelpUpdateLog();
     afx_msg void OnHelpCustomUi();
     afx_msg void OnHelpFaq();

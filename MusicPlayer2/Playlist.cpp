@@ -5,8 +5,10 @@
 #include "FilePathHelper.h"
 #include "SongDataManager.h"
 #include "TinyXml2Helper.h"
+#include "nlohmann/json.hpp"
+#pragma warning(disable: 4996)
 
-const vector<wstring> CPlaylistFile::m_surpported_playlist{ PLAYLIST_EXTENSION_2, L"m3u", L"m3u8", L"wpl", L"ttpl"};
+const vector<wstring> CPlaylistFile::m_surpported_playlist{ PLAYLIST_EXTENSION_2, L"m3u", L"m3u8", L"wpl", L"ttpl", L"btplaylist"};
 
 /*
 播放列表文件格式说明
@@ -30,11 +32,14 @@ wstring DeleteInvalidCh(const wstring& str)
 {
     wstring result = str;
     CCommon::StringCharacterReplace(result, L'|', L'_');
+    CCommon::StringCharacterReplace(result, L'\r', L' ');
+    CCommon::StringCharacterReplace(result, L'\n', L' ');
     return result;
 }
 
-void CPlaylistFile::LoadFromFile(const wstring & file_path)
+bool CPlaylistFile::LoadFromFile(const wstring & file_path)
 {
+    m_playlist.clear();
     m_path = file_path;
 
     //判断文件编码
@@ -45,7 +50,40 @@ void CPlaylistFile::LoadFromFile(const wstring & file_path)
     std::string file_content;
     if (CCommon::GetFileContent(file_path.c_str(), file_content))
     {
-        if (file_extension == L"wpl")
+        if (file_extension == L"json" || file_extension == L"btplaylist")
+        {
+            try
+            {
+                auto root = nlohmann::json::parse(file_content);
+                if (!root.is_object() || root.value("format", "") != "BoTapMusic" || root.value("version", 0) != 1
+                    || !root.contains("songs") || !root["songs"].is_array() || root["songs"].size() > 100000) return false;
+                vector<SongInfo> songs;
+                for (const auto& value : root["songs"])
+                {
+                    SongInfo song;
+                    song.file_path = CCommon::StrToUnicode(value.at("path").get<string>(), CodeType::UTF8);
+                    if (song.file_path.empty() || song.file_path.find_first_of(L"\r\n") != wstring::npos) return false;
+                    bool is_online = online::CSourceRegistry::IsVirtualPath(song.file_path);
+                    bool is_url = CCommon::IsURL(song.file_path);
+                    if (!is_online && !is_url)
+                        song.file_path = CCommon::RelativePathToAbsolutePath(song.file_path, CFilePathHelper(m_path).GetDir());
+                    if (!is_online && !is_url && !CCommon::IsPath(song.file_path)) return false;
+                    song.title = CCommon::StrToUnicode(value.value("title", ""), CodeType::UTF8);
+                    song.artist = CCommon::StrToUnicode(value.value("artist", ""), CodeType::UTF8);
+                    song.album = CCommon::StrToUnicode(value.value("album", ""), CodeType::UTF8);
+                    song.is_cue = value.value("is_cue", false);
+                    song.start_pos.fromInt(value.value("start_ms", 0));
+                    song.end_pos.fromInt(value.value("end_ms", 0));
+                    if (song.start_pos.toInt() < 0 || song.end_pos.toInt() < song.start_pos.toInt()) return false;
+                    song.track = value.value("track", 0);
+                    song.cue_file_path = CCommon::StrToUnicode(value.value("cue_path", ""), CodeType::UTF8);
+                    songs.push_back(song);
+                }
+                m_playlist = std::move(songs);
+            }
+            catch (const nlohmann::json::exception&) { return false; }
+        }
+        else if (file_extension == L"wpl")
         {
             ParseWplFile(file_content);
         }
@@ -61,26 +99,35 @@ void CPlaylistFile::LoadFromFile(const wstring & file_path)
             else
                 ParsePlaylistFile(file_content_wcs);
         }
+        return true;
     }
+    return false;
 }
 
-void CPlaylistFile::SaveToFile(const wstring& file_path, Type type) const
+bool CPlaylistFile::SaveToFile(const wstring& file_path, Type type) const
 {
-    SavePlaylistToFile(m_playlist, file_path, type);
+    return SavePlaylistToFile(m_playlist, file_path, type);
 }
 
-void CPlaylistFile::SavePlaylistToFile(const vector<SongInfo>& song_list, const wstring& file_path, Type type)
+bool CPlaylistFile::SavePlaylistToFile(const vector<SongInfo>& song_list, const wstring& file_path, Type type)
 {
-    ofstream stream{ file_path };
+    // 在同目录写完整临时文件，再原子替换，写失败时保留原歌单。
+    wchar_t full_path[MAX_PATH]{}, temp_path[MAX_PATH]{};
+    DWORD length = GetFullPathNameW(file_path.c_str(), MAX_PATH, full_path, nullptr);
+    if (length == 0 || length >= MAX_PATH) return false;
+    if (!GetTempFileNameW(CFilePathHelper(full_path).GetDir().c_str(), L"btp", 0, temp_path)) return false;
+    ofstream stream{ temp_path };
     if (!stream.is_open())
-        return;
+    {
+        DeleteFileW(temp_path); return false;
+    }
     if (type == PL_PLAYLIST)
     {
         for (const auto& item : song_list)
         {
             if (item.file_path.empty()) continue;   // 不保存没有音频路径的项目
             stream << CCommon::UnicodeToStr(item.file_path, CodeType::UTF8_NO_BOM);
-            if (item.is_cue || CCommon::IsURL(item.file_path))
+            if (item.is_cue || CCommon::IsURL(item.file_path) || online::CSourceRegistry::IsVirtualPath(item.file_path))
             {
                 // 出于向后兼容考虑必要这行代码，当song_list来自LoadFromFile加载的不记录cue_file_path的播放列表时item需要从媒体库加载cue_file_path
                 SongInfo song = CSongDataManager::GetInstance().GetSongInfo3(item); // 从媒体库载入数据，媒体库不存在的话会原样返回item
@@ -98,6 +145,20 @@ void CPlaylistFile::SavePlaylistToFile(const vector<SongInfo>& song_list, const 
             }
             stream << "\n"; // 使用std::endl会触发flush影响效率
         }
+    }
+    else if (type == PL_JSON)
+    {
+        nlohmann::json root = {{"format", "BoTapMusic"}, {"version", 1}, {"songs", nlohmann::json::array()}};
+        for (const auto& song : song_list)
+        {
+            if (song.file_path.empty()) continue;
+            auto utf8 = [](const wstring& text) { return CCommon::UnicodeToStr(text, CodeType::UTF8_NO_BOM); };
+            root["songs"].push_back({{"path", utf8(song.file_path)}, {"title", utf8(song.title)},
+                {"artist", utf8(song.artist)}, {"album", utf8(song.album)}, {"is_cue", song.is_cue},
+                {"start_ms", song.start_pos.toInt()}, {"end_ms", song.end_pos.toInt()},
+                {"track", song.track}, {"cue_path", utf8(song.cue_file_path)}});
+        }
+        stream << root.dump(2);
     }
     else if (type == PL_M3U || type == PL_M3U8)
     {
@@ -128,13 +189,23 @@ void CPlaylistFile::SavePlaylistToFile(const vector<SongInfo>& song_list, const 
             else
             {
                 CString buff;
-                buff.Format(_T("#EXTINF:%d,%s - %s"), song.length().toInt() / 1000, song.GetArtist().c_str(), song.GetTitle().c_str());
+                buff.Format(_T("#EXTINF:%d,%s - %s"), song.length().toInt() / 1000, DeleteInvalidCh(song.artist).c_str(), DeleteInvalidCh(song.title).c_str());
                 stream << CCommon::UnicodeToStr(buff.GetString(), code_type) << '\n';
+                // 常规播放器可忽略扩展标签；本程序利用它们无损还原标题、歌手和专辑。
+                stream << "#EXTART:" << CCommon::UnicodeToStr(DeleteInvalidCh(song.artist), code_type) << '\n';
+                stream << "#EXTALB:" << CCommon::UnicodeToStr(DeleteInvalidCh(song.album), code_type) << '\n';
+                stream << "#BOTTITLE:" << CCommon::UnicodeToStr(DeleteInvalidCh(song.title), code_type) << '\n';
                 stream << CCommon::UnicodeToStr(song.file_path, code_type) << '\n';
             }
         }
     }
+    stream.flush();
+    bool success = stream.good();
     stream.close();
+    success = success && !stream.fail();
+    if (success) success = MoveFileExW(temp_path, full_path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
+    if (!success) DeleteFileW(temp_path);
+    return success;
 }
 
 const vector<SongInfo>& CPlaylistFile::GetPlaylist() const
@@ -263,40 +334,45 @@ void CPlaylistFile::ParsePlaylistFile(const std::wstring& file_contents)
 
 void CPlaylistFile::ParseM3uFile(const std::wstring& file_contents)
 {
-    std::vector<std::wstring> lines;
+    vector<wstring> lines;
     CCommon::StringSplitLine(file_contents, lines);
-    std::wstring track_name;
-    for (const wstring& current_line : lines)
+    SongInfo metadata;
+    for (wstring line : lines)
     {
-        if (current_line.substr(0, 7) == L"#EXTM3U")
-            continue;
-
-        //解析 #EXTINF 行获取曲目名称
-        if (current_line.substr(0, 7) == L"#EXTINF")
+        if (!line.empty() && line.front() == 0xfeff) line.erase(0, 1);
+        if (!line.empty() && line.back() == L'\r') line.pop_back();
+        if (line.empty()) continue;
+        if (line.compare(0, 8, L"#EXTINF:") == 0)
         {
-            size_t index = current_line.rfind(L',');
-            if (index == std::wstring::npos)
-                track_name.clear();
-            else
-                track_name = current_line.substr(index + 1);
+            metadata = SongInfo();
+            size_t comma = line.find(L',', 8);
+            if (comma != wstring::npos)
+            {
+                int seconds = _wtoi(line.substr(8, comma - 8).c_str());
+                if (seconds > 0 && seconds < 2147483) metadata.end_pos.fromInt(seconds * 1000);
+                wstring display = line.substr(comma + 1);
+                size_t separator = display.find(L" - ");
+                if (separator != wstring::npos)
+                {
+                    metadata.artist = display.substr(0, separator);
+                    metadata.title = display.substr(separator + 3);
+                }
+                else metadata.title = display;
+            }
         }
-        //不是 #EXTINF 行
-        else
+        else if (line.compare(0, 8, L"#EXTART:") == 0) metadata.artist = line.substr(8);
+        else if (line.compare(0, 8, L"#EXTALB:") == 0) metadata.album = line.substr(8);
+        else if (line.compare(0, 10, L"#BOTTITLE:") == 0) metadata.title = line.substr(10);
+        else if (line.front() != L'#')
         {
-            SongInfo item;
-            item.file_path = current_line;
-            item.title = track_name;
-
-            bool is_url = CCommon::IsURL(item.file_path);
-            bool is_online = online::CSourceRegistry::IsVirtualPath(item.file_path);
-            //如果是相对路径，则转换成绝对路径（在线曲目的虚拟路径不做这个转换）
+            SongInfo item = metadata;
+            item.file_path = line;
+            bool is_url = CCommon::IsURL(line);
+            bool is_online = online::CSourceRegistry::IsVirtualPath(line);
             if (!is_url && !is_online)
-                item.file_path = CCommon::RelativePathToAbsolutePath(item.file_path, CFilePathHelper(m_path).GetDir());
-            //绝对路径的语法检查
-            if (is_url || CCommon::IsPath(item.file_path) || online::CSourceRegistry::IsVirtualPath(item.file_path))
-                m_playlist.push_back(item);
-
-            track_name.clear();
+                item.file_path = CCommon::RelativePathToAbsolutePath(line, CFilePathHelper(m_path).GetDir());
+            if (is_url || is_online || CCommon::IsPath(item.file_path)) m_playlist.push_back(item);
+            metadata = SongInfo();
         }
     }
 }

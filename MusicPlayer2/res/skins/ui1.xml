@@ -41,19 +41,22 @@
           <button key="settings" width="20" height="20" margin="2"/>
           <button key="equalizer" width="20" height="20" margin="2"/>
           <button key="skin" width="20" height="20" margin="2"/>
-          <button key="miniMode" width="20" height="20" margin="2" hide-width="142"/>
-          <button key="info" width="20" height="20" margin="2" hide-width="166"/>
-          <button key="find" width="20" height="20" margin="2" hide-width="190"/>
-          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="262"/>
-          <button key="abRepeat" width="20" height="20" margin="2" hide-width="286"/>
-          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="238"/>
+          <button key="miniMode" width="20" height="20" margin="2" hide-width="262"/>
+          <button key="info" width="20" height="20" margin="2" hide-width="286"/>
+          <button key="find" width="20" height="20" margin="2" hide-width="310"/>
+          <button key="onlineMusic" width="20" height="20" margin="2"/>
+          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="382"/>
+          <button key="abRepeat" width="20" height="20" margin="2" hide-width="406"/>
+          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="358"/>
+          <button key="downloadCurrent" width="96" height="20" margin-left="4" show_text="true"/>
           <placeHolder/>
           <volume width="56" show_text="true"/>
-          <beatIndicator width="44" hide-width="336"/>
+          <beatIndicator width="44" hide-width="456"/>
         </horizontalLayout>
       </rectangle>
 	  <classicalControlBar margin-top="4" show_switch_display_btn="true"/>
-      <stackElement>
+      <navigationBar height="28" margin-left="4" margin-right="4" icon_type="icon_and_text" item_space="12" stack_element_id="classic_content" item_list="lyrics,play_queue,online_music"/>
+      <stackElement id="classic_content">
         <verticalLayout>
           <horizontalLayout height="24" margin-left="6" margin-right="6">
             <text type="userDefine" text="%(TXT_UI_LYRIC_SHOW):"/>
@@ -67,6 +70,7 @@
           <playlistIndicator height="30" margin-bottom="4"/>
           <playlist/>
         </verticalLayout>
+        <onlineMusic margin="6"/>
       </stackElement>
     </verticalLayout>
   </ui>
@@ -112,18 +116,23 @@
             <button key="settings" width="20" height="20" margin="2"/>
             <button key="equalizer" width="20" height="20" margin="2"/>
             <button key="skin" width="20" height="20" margin="2"/>
-            <button key="miniMode" width="20" height="20" margin="2" hide-width="174"/>
-            <button key="info" width="20" height="20" margin="2" hide-width="198"/>
-            <button key="find" width="20" height="20" margin="2" hide-width="222"/>
-            <button key="darkLightMode" width="20" height="20" margin="2" hide-width="294"/>
-            <button key="abRepeat" width="20" height="20" margin="2" hide-width="318"/>
-            <button key="desktopLyric" width="20" height="20" margin="2" hide-width="270"/>
+            <button key="miniMode" width="20" height="20" margin="2" hide-width="294"/>
+            <button key="info" width="20" height="20" margin="2" hide-width="318"/>
+            <button key="find" width="20" height="20" margin="2" hide-width="342"/>
+            <button key="onlineMusic" width="20" height="20" margin="2"/>
+            <button key="darkLightMode" width="20" height="20" margin="2" hide-width="414"/>
+            <button key="abRepeat" width="20" height="20" margin="2" hide-width="438"/>
+            <button key="desktopLyric" width="20" height="20" margin="2" hide-width="390"/>
+          <button key="downloadCurrent" width="96" height="20" margin-left="4" show_text="true"/>
             <placeHolder/>
             <volume width="56" show_text="true"/>
-            <beatIndicator width="44" hide-width="368"/>
+            <beatIndicator width="44" hide-width="488"/>
           </horizontalLayout>
         </rectangle>
-        <lyrics margin-top="4" hide-height="192"/>
+        <stackElement margin-top="4">
+          <lyrics hide-height="192"/>
+          <onlineMusic margin="4"/>
+        </stackElement>
 	      <classicalControlBar/>
       </verticalLayout>
 	  </verticalLayout>

@@ -57,7 +57,7 @@ public:
 
 private:
     // 实际绘制双行歌词
-    void DrawLyricDoubleLine(CRect rect, LPCTSTR lyric, LPCTSTR next_lyric, Alignment align, int progress, bool switch_flag, int fade_percent = 100);
+    void DrawLyricDoubleLine(CRect rect, LPCTSTR lyric, LPCTSTR next_lyric, Alignment align, int progress, bool switch_flag, bool karaoke, int fade_percent = 100);
 
 private:
     UIColors& m_colors;

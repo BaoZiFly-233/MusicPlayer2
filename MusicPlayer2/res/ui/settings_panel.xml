@@ -14,6 +14,7 @@
               <navigationItem icon="setting" text="%(TITLE_OPT_DATA)"/>
               <navigationItem icon="play" text="%(TITLE_OPT_PLAY)"/>
               <navigationItem icon="mediaLib" text="%(TITLE_OPT_MEDIA_LIB)"/>
+              <navigationItem icon="online" text="在线音乐"/>
             </navigationBar>
             <button key="settings" text="%(UI_TXT_MORE_SETTINGS)" show_text="true" height="32"/>
           </verticalLayout>
@@ -24,9 +25,11 @@
               <navigationItem icon="setting" text="%(TITLE_OPT_DATA)"/>
               <navigationItem icon="play" text="%(TITLE_OPT_PLAY)"/>
               <navigationItem icon="mediaLib" text="%(TITLE_OPT_MEDIA_LIB)"/>
+              <navigationItem icon="online" text="在线音乐"/>
             </navigationBar>
             <button key="settings" text="%(UI_TXT_MORE_SETTINGS)" height="32" width="32"/>
           </verticalLayout>
+
         </stackElement>
         <stackElement margin-left="8" id="settings_stack_element">
           <!--第1页 外观设置-->
@@ -249,6 +252,34 @@
             </verticalLayout>
           </scrollArea>
           
+          <scrollArea>
+            <verticalLayout>
+              <rectangle height="88">
+                <verticalLayout margin="12">
+                  <horizontalLayout height="28">
+                    <text text="默认下载文件夹" font_size="10"/>
+                    <button id="onlineDownloadConfig" icon="setting" text="修改" show_text="true" width="76"/>
+                  </horizontalLayout>
+                  <text id="onlineDownloadPath" height="24" color_style="emphasis1"/>
+                </verticalLayout>
+              </rectangle>
+              <rectangle height="56" margin-top="4">
+                <horizontalLayout margin="12">
+                  <text text="文件命名" font_size="10"/>
+                  <comboBox id="onlineNameOrder" width="160" height="28"/>
+                </horizontalLayout>
+              </rectangle>
+              <toggleSettingGroup id="onlinePlaylistFolder" height="64" margin-top="4" icon="folder" mainText="按歌单分文件夹" subText="整张歌单下载时使用歌单名称"/>
+              <toggleSettingGroup id="onlinePrefetch" height="64" margin-top="4" icon="next" mainText="预缓存下一首" subText="提前下载下一首，减少等待；缓存上限 1 GiB"/>
+              <toggleSettingGroup id="onlineAutoLyrics" height="60" margin-top="4" icon="lyric" mainText="自动获取在线歌词"/>
+              <toggleSettingGroup id="onlineAutoCover" height="60" margin-top="4" icon="albumCover" mainText="自动获取在线封面"/>
+              <toggleSettingGroup id="onlineDailyReward" height="64" margin-top="4" icon="online" mainText="酷狗自动签到领会员" subText="仅在软件运行期间检查当天领取记录"/>
+              <horizontalLayout height="36" margin-top="12">
+                <button id="onlineOpenDownloads" icon="folder" text="打开下载文件夹" show_text="true"/>
+                <button id="onlineClearCache" icon="close" text="清理在线缓存" show_text="true" margin-left="8"/>
+              </horizontalLayout>
+            </verticalLayout>
+          </scrollArea>
         </stackElement>
       </horizontalLayout>
     </verticalLayout>

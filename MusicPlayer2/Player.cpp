@@ -54,6 +54,8 @@ inline void CPlayer::OnPlaylistChange() {
     m_next_tracks.clear();
     m_shuffle_list.clear();
     m_is_shuffle_list_played = false;
+    m_prepared_random = -1;
+    m_prepared_shuffle.clear();
 }
 
 void CPlayer::IniPlayerCore()
@@ -471,6 +473,7 @@ void CPlayer::IniLyrics()
 void CPlayer::IniLyrics(const wstring& lyric_path)
 {
     m_Lyrics = CLyrics{ lyric_path };
+    m_inner_lyric = false;
     GetCurrentSongInfo2().lyric_file = lyric_path;
     SongInfo song_info{ CSongDataManager::GetInstance().GetSongInfo3(GetCurrentSongInfo()) };
     song_info.lyric_file = lyric_path;
@@ -507,6 +510,10 @@ void CPlayer::MusicControl(Command command, int volume_step)
         SendMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_POST_MUSIC_STREAM_OPENED, 0, 0);
         m_error_code = 0;
         m_error_state = ES_NO_ERROR;
+        m_song_length = CPlayTime();
+        m_current_file_type.clear();
+        m_Lyrics = CLyrics();
+        m_inner_lyric = false;
         SongInfo& cur_song = GetCurrentSongInfo2(); // 获取m_playlist[m_index]的引用，m_index无效时取得m_no_use
         m_is_osu = COSUPlayerHelper::IsOsuFile(cur_song.file_path);
         // 在线曲目在播放列表里存的是虚拟路径（如 kugou://<hash>），
@@ -519,6 +526,7 @@ void CPlayer::MusicControl(Command command, int volume_step)
             // 注意不要拿空路径去调播放核心：播放核心会用一个无效句柄继续查音频信息，
             // 那里没有判空，会直接崩溃。所以这里只置状态就返回。
             m_error_state = ES_FILE_CANNOT_BE_OPEN;
+            m_current_position = CPlayTime();
             m_file_opend = true;
             PostMessage(theApp.m_pMainWnd->m_hWnd, WM_MUSIC_STREAM_OPENED, 0, 0);
             m_controls.UpdateControls(PlaybackStatus::Closed);
@@ -573,6 +581,7 @@ void CPlayer::MusicControl(Command command, int volume_step)
     }
     break;
     case Command::PLAY:
+        if (!m_file_opend || m_error_state != ES_NO_ERROR || m_error_code != 0) return;
         ConnotPlayWarning();
         m_pCore->Play();
         m_playing = PS_PLAYING;
@@ -634,6 +643,7 @@ void CPlayer::MusicControl(Command command, int volume_step)
         }
         else
         {
+            if (!m_file_opend || m_error_state != ES_NO_ERROR || m_error_code != 0) return;
             ConnotPlayWarning();
             m_pCore->Play();
             m_playing = PS_PLAYING;
@@ -649,6 +659,7 @@ void CPlayer::MusicControl(Command command, int volume_step)
         SetVolume();
         break;
     case Command::SEEK:     //定位到m_current_position的位置
+        if (!m_file_opend || m_error_state != ES_NO_ERROR) return;
         if (m_current_position > m_song_length)
         {
             m_current_position = CPlayTime();
@@ -806,7 +817,7 @@ bool CPlayer::PlayTrack(int song_track, bool auto_next)
                 }
                 else
                 {
-                    m_shuffle_index = GetNextShuffleIdx();
+                    m_shuffle_index = m_is_shuffle_list_played ? GetNextShuffleIdx() : 0;
                     if (m_shuffle_index == 0 && m_is_shuffle_list_played || m_shuffle_list.empty())
                     {
                         //如果列表中的曲目已经随机播放完了一遍，则重新生成一个新的顺序
@@ -844,7 +855,8 @@ bool CPlayer::PlayTrack(int song_track, bool auto_next)
             {
                 if (GetSongNum() > 1)
                 {
-                    song_track = CCommon::Random(0, GetSongNum());
+                    PrepareNextTrack();
+                    song_track = m_prepared_random;
                 }
                 else
                 {
@@ -926,6 +938,8 @@ bool CPlayer::PlayTrack(int song_track, bool auto_next)
         MusicControl(Command::STOP);
     else
     {
+        m_prepared_random = -1;
+        m_prepared_shuffle.clear();
         m_current_position.fromInt(0);      //关闭前将当前播放位置清零
         MusicControl(Command::CLOSE);
         m_index = song_track;
@@ -1298,6 +1312,38 @@ int CPlayer::AddSongsToPlaylist(const vector<SongInfo>& songs)
     return added;
 }
 
+int CPlayer::OpenOnlineSongs(const vector<SongInfo>& songs, bool append)
+{
+    if (songs.empty()) return -2;
+    if (!BeforeIniPlayList(true, true)) return -1;
+
+    vector<SongInfo> combined;
+    if (append && !IsPlaylistEmpty()) combined = m_playlist;
+    int added = 0;
+    for (const auto& song : songs)
+    {
+        if (song.file_path.empty() || find(combined.begin(), combined.end(), song) != combined.end()) continue;
+        combined.push_back(song); ++added;
+    }
+    wstring path = append && m_playlist_mode == PM_PLAYLIST && !m_playlist_path.empty() ? m_playlist_path
+        : append ? theApp.m_playlist_dir + L"online_queue.playlist"
+        : CRecentList::Instance().GetSpecPlaylist(CRecentList::PT_TEMP).path;
+    // BeforeIniPlayList 已保存旧列表并持有播放状态锁，写入成功前不切换列表身份。
+    if (!CPlaylistFile::SavePlaylistToFile(combined, path))
+    {
+        IniPlayList();
+        return -3;
+    }
+    m_path.clear(); m_playlist_path = path; m_playlist_mode = PM_PLAYLIST;
+    m_sort_mode = SM_UNSORT; m_contain_sub_folder = false; m_index = 0; m_current_position.fromInt(0);
+    if (!append)
+    {
+        m_current_song_tmp = songs.front(); m_current_song_position_tmp = 0; m_current_song_playing_tmp = true;
+    }
+    IniPlayList(!append);
+    return added;
+}
+
 bool CPlayer::ReloadPlaylist(MediaLibRefreshMode refresh_mode)
 {
     if (!BeforeIniPlayList(true, true))
@@ -1482,6 +1528,11 @@ bool CPlayer::IsError() const
 std::wstring CPlayer::GetErrorInfo()
 {
     wstring error_info;
+    if (m_error_state == ES_FILE_CANNOT_BE_OPEN)
+    {
+        auto* source = online::CSourceRegistry::Instance().FindByPath(GetCurrentFilePath());
+        if (source && !source->GetLastError().empty()) return source->GetLastError();
+    }
     if (m_error_state == ES_FILE_NOT_EXIST)
         error_info = theApp.m_str_table.LoadText(L"UI_TXT_PLAYSTATUS_ERROR_FILE_NOT_EXIST");
     else if (m_error_state == ES_FILE_CANNOT_BE_OPEN)
@@ -1700,6 +1751,8 @@ wstring CPlayer::GetCurrentFilePath() const
 wstring CPlayer::GetDisplayName() const
 {
     const SongInfo& song = GetSafeCurrentSongInfo();
+    if (online::CSourceRegistry::IsVirtualPath(song.file_path))
+        return song.IsTitleEmpty() ? L"在线歌曲" : song.IsArtistEmpty() ? song.title : song.artist + L" - " + song.title;
     if (song.is_cue && !song.IsArtistEmpty() && !song.IsTitleEmpty())
         return song.artist + L" - " + song.title;
     if (IsOsuFile() && !song.comment.empty())
@@ -2128,6 +2181,35 @@ const SongInfo& CPlayer::GetSafeCurrentSongInfo() const
     else return m_no_use;
 }
 
+void CPlayer::PrepareNextTrack()
+{
+    if (m_playlist.empty()) return;
+    if (m_repeat_mode == RM_PLAY_RANDOM && m_next_tracks.empty())
+    {
+        const bool valid = m_prepared_random >= 0 && m_prepared_random < GetSongNum()
+            && m_prepared_playlist_size == m_playlist.size() && m_prepared_from_index == m_index
+            && (m_prepared_from_song == GetSafeCurrentSongInfo())
+            && (m_prepared_random_song == m_playlist[m_prepared_random]);
+        if (!valid)
+        {
+            m_prepared_random = CCommon::Random(0, GetSongNum());
+            m_prepared_from_index = m_index; m_prepared_playlist_size = m_playlist.size();
+            m_prepared_from_song = GetSafeCurrentSongInfo(); m_prepared_random_song = m_playlist[m_prepared_random];
+        }
+    }
+    else if (m_repeat_mode == RM_PLAY_SHUFFLE && (m_shuffle_list.size() != m_playlist.size()
+        || (GetNextShuffleIdx() == 0 && m_is_shuffle_list_played)))
+    {
+        if (m_prepared_shuffle.size() != m_playlist.size())
+        {
+            m_prepared_shuffle.resize(m_playlist.size());
+            for (size_t i = 0; i < m_prepared_shuffle.size(); ++i) m_prepared_shuffle[i] = static_cast<int>(i);
+            std::mt19937 generator(std::random_device{}());
+            std::shuffle(m_prepared_shuffle.begin(), m_prepared_shuffle.end(), generator);
+        }
+    }
+}
+
 SongInfo CPlayer::GetNextTrack() const
 {
     auto GetLegitSongInfo = [this](int x) { return x >= 0 && x < static_cast<int>(m_playlist.size()) ? m_playlist[x] : SongInfo(); };
@@ -2144,12 +2226,11 @@ SongInfo CPlayer::GetNextTrack() const
 
     case RM_PLAY_SHUFFLE:
     {
-        int shuffle_index = GetNextShuffleIdx();
-        if (shuffle_index == 0 && m_is_shuffle_list_played || m_shuffle_list.empty())
+        int shuffle_index = m_is_shuffle_list_played ? GetNextShuffleIdx() : 0;
+        if ((shuffle_index == 0 && m_is_shuffle_list_played) || m_shuffle_list.size() != m_playlist.size() || m_shuffle_list.empty())
         {
-            //如果shuffle_index == 0且列表播放过，说明列表中的曲目已经无序播放完一遍，此时无序列表要重新生成，因此下一首曲目是不确定的
-            //以及shuffle之前m_shuffle_list为空
-            return SongInfo();
+            return !m_prepared_shuffle.empty() && m_prepared_shuffle.size() == m_playlist.size()
+                ? GetLegitSongInfo(m_prepared_shuffle.front()) : SongInfo();
         }
         else
         {
@@ -2158,14 +2239,18 @@ SongInfo CPlayer::GetNextTrack() const
     }
 
     case RM_PLAY_RANDOM:
-        return SongInfo();
+        return m_prepared_random >= 0 && m_prepared_random < GetSongNum()
+            && m_prepared_playlist_size == m_playlist.size() && m_prepared_from_index == m_index
+            && (m_prepared_from_song == GetSafeCurrentSongInfo())
+            && (m_prepared_random_song == m_playlist[m_prepared_random])
+            ? m_playlist[m_prepared_random] : SongInfo();
 
     case RM_LOOP_PLAYLIST:
     {
         int index = m_index + 1;
         if (index >= GetSongNum() || index < 0)
             index = 0;
-        return m_playlist[index];
+        return GetLegitSongInfo(index);
     }
 
     case RM_LOOP_TRACK:
@@ -2455,6 +2540,18 @@ void CPlayer::ConnotPlayWarning() const
         PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_CONNOT_PLAY_WARNING, 0, 0);
 }
 
+bool CPlayer::LoadOnlineCover(const wstring& song_path, const wstring& cover_path)
+{
+    if (song_path != GetCurrentFilePath() || !online::CSourceRegistry::IsVirtualPath(song_path)) return false;
+    CImage image;
+    if (FAILED(image.Load(cover_path.c_str()))) return false;
+    CSingleLock sync(&m_album_cover_sync, TRUE);
+    m_album_cover.Destroy(); m_album_cover.Attach(image.Detach());
+    m_album_cover_path = cover_path; m_inner_cover = false;
+    AlbumCoverResize(); MediaTransControlsLoadThumbnail();
+    return true;
+}
+
 void CPlayer::SearchAlbumCover()
 {
     CSingleLock sync(&m_album_cover_sync, TRUE);
@@ -2553,6 +2650,13 @@ void CPlayer::AlbumCoverResize()
 
 void CPlayer::InitShuffleList(int first_song)
 {
+    if (first_song == -1 && !m_prepared_shuffle.empty() && m_prepared_shuffle.size() == m_playlist.size())
+    {
+        m_shuffle_list = std::move(m_prepared_shuffle);
+        m_shuffle_index = 0; m_is_shuffle_list_played = false;
+        return;
+    }
+    m_prepared_shuffle.clear();
     if (first_song < 0 && first_song != -1 || first_song > static_cast<int>(m_shuffle_list.size()) - 1)
     {
         first_song = 0;

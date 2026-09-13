@@ -5,7 +5,13 @@
     <verticalLayout>
       <trackInfo height="20" margin="4" margin-bottom="0"/>
       <text type="format" style="scroll" height="20" margin-left="4" margin-right="4"/>
-      <stackElement margin-left="4" margin-right="4" margin-bottom="8" show_indicator="true" indicator_offset="-8">
+      <navigationBar height="28" margin="4" margin-bottom="0" icon_type="icon_and_text" item_space="12" stack_element_id="modern_content">
+        <navigationItem text="正在播放" icon="nowPlaying"/>
+        <navigationItem text="播放队列" icon="playlist"/>
+        <navigationItem text="歌词与队列" icon="lyric"/>
+        <navigationItem text="在线音乐" icon="online"/>
+      </navigationBar>
+      <stackElement id="modern_content" margin-left="4" margin-right="4" margin-bottom="8">
         <!--第1页-->
         <horizontalLayout>
           <verticalLayout margin-bottom="12">
@@ -56,6 +62,16 @@
             <playlist item_height="32"/>
           </verticalLayout>
         </horizontalLayout>
+        <horizontalLayout>
+          <verticalLayout width="28%" min-width="170" max-width="280" margin="8" hide-width="650">
+            <albumCover square="true" max-height="210"/>
+            <text type="title" alignment="center" style="scroll" height="28" font_size="10" margin-top="8"/>
+            <text type="artist" alignment="center" style="scroll" height="24" font_size="9"/>
+            <lyrics margin-top="12"/>
+            <spectrum draw_reflex="true" fixed_width="true" alignment="center" height="54" hide-height="310"/>
+          </verticalLayout>
+          <onlineMusic margin="8" margin-left="12"/>
+        </horizontalLayout>
       </stackElement>
       <!--工具栏-->
       <rectangle height="24" margin="4" margin-bottom="0">
@@ -64,16 +80,18 @@
           <button key="settings" width="20" height="20" margin="2"/>
           <button key="equalizer" width="20" height="20" margin="2"/>
           <button key="skin" width="20" height="20" margin="2"/>
-          <button key="miniMode" width="20" height="20" margin="2" hide-width="174"/>
-          <button key="info" width="20" height="20" margin="2" hide-width="198"/>
-          <button key="find" width="20" height="20" margin="2" hide-width="222"/>
-          <button key="lyricTranslate" width="20" height="20" margin="2" hide-width="246"/>
-          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="294"/>
-          <button key="abRepeat" width="20" height="20" margin="2" hide-width="318"/>
-          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="270"/>
+          <button key="miniMode" width="20" height="20" margin="2" hide-width="294"/>
+          <button key="info" width="20" height="20" margin="2" hide-width="318"/>
+          <button key="find" width="20" height="20" margin="2" hide-width="342"/>
+          <button key="onlineMusic" width="20" height="20" margin="2"/>
+          <button key="lyricTranslate" width="20" height="20" margin="2" hide-width="366"/>
+          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="414"/>
+          <button key="abRepeat" width="20" height="20" margin="2" hide-width="438"/>
+          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="390"/>
+          <button key="downloadCurrent" width="96" height="20" margin-left="4" show_text="true"/>
           <placeHolder/>
           <volume width="56" show_text="true"/>
-          <beatIndicator width="44" hide-width="368"/>
+          <beatIndicator width="44" hide-width="488"/>
         </horizontalLayout>
       </rectangle>
       <!--控制条-->
@@ -112,6 +130,7 @@
           </verticalLayout>
           <!--第1页-->
           <playlist margin="8"/>
+          <onlineMusic margin="4"/>
         </stackElement>
         <spectrum draw_reflex="true" fixed_width="true" alignment="center" height="15%" margin-top="-6" margin-bottom="-12" min-height="24" max-height="80"/>
       </verticalLayout>
@@ -121,16 +140,18 @@
           <button key="settings" width="20" height="20" margin="2"/>
           <button key="equalizer" width="20" height="20" margin="2"/>
           <button key="skin" width="20" height="20" margin="2"/>
-          <button key="miniMode" width="20" height="20" margin="2" hide-width="174"/>
-          <button key="info" width="20" height="20" margin="2" hide-width="198"/>
-          <button key="find" width="20" height="20" margin="2" hide-width="222"/>
-          <button key="lyricTranslate" width="20" height="20" margin="2" hide-width="246"/>
-          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="294"/>
-          <button key="abRepeat" width="20" height="20" margin="2" hide-width="318"/>
-          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="270"/>
+          <button key="miniMode" width="20" height="20" margin="2" hide-width="294"/>
+          <button key="info" width="20" height="20" margin="2" hide-width="318"/>
+          <button key="find" width="20" height="20" margin="2" hide-width="342"/>
+          <button key="onlineMusic" width="20" height="20" margin="2"/>
+          <button key="lyricTranslate" width="20" height="20" margin="2" hide-width="366"/>
+          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="414"/>
+          <button key="abRepeat" width="20" height="20" margin="2" hide-width="438"/>
+          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="390"/>
+          <button key="downloadCurrent" width="96" height="20" margin-left="4" show_text="true"/>
           <placeHolder/>
           <volume width="56" show_text="true"/>
-          <beatIndicator width="44" hide-width="368"/>
+          <beatIndicator width="44" hide-width="488"/>
         </horizontalLayout>
       </rectangle>
       <classicalControlBar margin="4"/>
@@ -174,16 +195,18 @@
           <button key="settings" width="20" height="20" margin="2"/>
           <button key="equalizer" width="20" height="20" margin="2"/>
           <button key="skin" width="20" height="20" margin="2"/>
-          <button key="miniMode" width="20" height="20" margin="2" hide-width="174"/>
-          <button key="info" width="20" height="20" margin="2" hide-width="198"/>
-          <button key="find" width="20" height="20" margin="2" hide-width="222"/>
-          <button key="lyricTranslate" width="20" height="20" margin="2" hide-width="246"/>
-          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="294"/>
-          <button key="abRepeat" width="20" height="20" margin="2" hide-width="318"/>
-          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="270"/>
+          <button key="miniMode" width="20" height="20" margin="2" hide-width="294"/>
+          <button key="info" width="20" height="20" margin="2" hide-width="318"/>
+          <button key="find" width="20" height="20" margin="2" hide-width="342"/>
+          <button key="onlineMusic" width="20" height="20" margin="2"/>
+          <button key="lyricTranslate" width="20" height="20" margin="2" hide-width="366"/>
+          <button key="darkLightMode" width="20" height="20" margin="2" hide-width="414"/>
+          <button key="abRepeat" width="20" height="20" margin="2" hide-width="438"/>
+          <button key="desktopLyric" width="20" height="20" margin="2" hide-width="390"/>
+          <button key="downloadCurrent" width="96" height="20" margin-left="4" show_text="true"/>
           <placeHolder/>
           <volume width="56" show_text="true"/>
-          <beatIndicator width="44" hide-width="368"/>
+          <beatIndicator width="44" hide-width="488"/>
         </horizontalLayout>
       </rectangle>
       <classicalControlBar margin-top="4"/>

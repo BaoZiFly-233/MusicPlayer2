@@ -16,6 +16,8 @@ namespace UiElement
         virtual bool MouseLeave() override;
         virtual void HideTooltip() override;
         virtual void FromXmlNode(tinyxml2::XMLElement* xml_node);
+        void SetSelectionChangedTrigger(std::function<void(int)> trigger) { m_selection_trigger = std::move(trigger); }
+        void SetSelectedIndex(int index) { selected_index = index; }
 
         enum IconType
         {
@@ -63,6 +65,7 @@ namespace UiElement
         bool find_stack_element{};      //如果已经查找过StackElement，则为true
         StackElement* stack_element{};
         int selected_index{};
+        std::function<void(int)> m_selection_trigger;
         int last_hover_index{ -1 };
     };
 }
