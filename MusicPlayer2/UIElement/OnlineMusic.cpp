@@ -51,6 +51,14 @@ bool OnlineMusicList::IsHighlightRow(int row)
         && !m_state->songs[row].file_path.empty()
         && m_state->songs[row].file_path == CPlayer::GetInstance().GetSafeCurrentSongInfo().file_path;
 }
+
+bool OnlineMusicList::IsItemEnabled(int row)
+{
+    // 播放失败过的曲目用灰色显示，让用户一眼看出哪些听不了
+    if (!m_state || row < 0 || row >= static_cast<int>(m_state->unplayable.size())) return true;
+    return !m_state->unplayable[row];
+}
+
 void OnlineMusicList::Dispatch(Model::Action action)
 {
     if (!m_state) return;

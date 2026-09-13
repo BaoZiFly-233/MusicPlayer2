@@ -2547,6 +2547,8 @@ void CMusicPlayerDlg::OnTimer(UINT_PTR nIDEvent)
         {
             const bool online_error = online::CSourceRegistry::IsVirtualPath(player.GetCurrentFilePath()) && player.IsError();
             COnlineMusicModel::Instance().SetPlaybackError(online_error ? player.GetErrorInfo() : L"");
+            // 播放失败时把这首在线曲目标记下来，列表里会显示成灰色
+            if (online_error) COnlineMusicModel::Instance().MarkUnplayable(player.GetCurrentFilePath());
             if (player.IsPlaying()) player.PrepareNextTrack();
             const auto next = !player.IsPlaylistEmpty() && player.IsPlaying() && player.GetRepeatMode() != RM_PLAY_TRACK
                 ? player.GetNextTrack().file_path : L"";

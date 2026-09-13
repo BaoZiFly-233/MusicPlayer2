@@ -49,6 +49,8 @@ namespace UiElement
         virtual bool HasIcon() { return false; }
         virtual std::wstring GetEmptyString() { return std::wstring(); }    //列表为空时显示的文本
         virtual bool IsHighlightRow(int row) { return false; }
+    //该行是否可用。不可用的行文字显示为灰色（默认全部可用，派生类可重写）
+    virtual bool IsItemEnabled(int row) { return true; }
         virtual int GetColumnScrollTextWhenSelected() { return -1; }    //获取选中时需要滚动显示的列
         virtual bool ShowTooltip() { return false; }
         virtual std::wstring GetToolTipText(int row) { return std::wstring(); }
