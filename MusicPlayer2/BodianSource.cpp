@@ -462,15 +462,37 @@ wstring CBodianSource::ResolvePlayUrl(const wstring& virtual_path)
         const int right = response.contains("data") ? online::JsonNumber(response["data"], "status") : 0;
         if (right != 1 && right != 4)
         { m_last_error = right == 3 ? L"当前波点账号仅有试听权限，未播放试听片段" : L"波点账号没有这首歌曲的完整播放权限"; return {}; }
-        for (const auto& quality : vector<pair<string, string>>{{"flac", "2000kflac"}, {"mp3", "320kmp3"}, {"mp3", "128kmp3"}})
+        // 按音质从高到低试，失败就往下退。把每次失败的原因记下来，
+        // 最后告诉用户实际用的是哪一档、上面几档为什么没成 —— 否则用户只会看到「怎么没有无损」。
+        const vector<pair<wstring, pair<string, string>>> qualities = {
+            { L"无损", { "flac", "2000kflac" } },
+            { L"320k", { "mp3", "320kmp3" } },
+            { L"128k", { "mp3", "128kmp3" } },
+        };
+        wstring first_failure;
+        for (size_t qi = 0; qi < qualities.size(); ++qi)
         {
-            const auto& [format, br] = quality;
+            const wstring& quality_name = qualities[qi].first;
+            const auto& [format, br] = qualities[qi].second;
             const string body = json{{"devId", m_devid}, {"musicId", stoll(id)}, {"format", format}, {"br", br}, {"freeSign", ""}}.dump();
-            if (!SignedRequest(L"/api/play/music/v2/audioUrl", {{"devId", m_devid}, {"musicId", id}, {"format", format}, {"br", br}, {"freeSign", ""}}, response, body)) continue;
-            if (!response.contains("data")) continue;
+            if (!SignedRequest(L"/api/play/music/v2/audioUrl", {{"devId", m_devid}, {"musicId", id}, {"format", format}, {"br", br}, {"freeSign", ""}}, response, body))
+            {
+                if (first_failure.empty()) first_failure = m_last_error;
+                continue;
+            }
+            if (!response.contains("data"))
+            {
+                if (first_failure.empty()) first_failure = quality_name + L"档没有返回数据";
+                continue;
+            }
             auto url = online::JsonText(response["data"], "audioHttpsUrl");
             if (url.empty()) url = online::JsonText(response["data"], "audioUrl");
-            if (url.starts_with("https://") || url.starts_with("http://")) { m_last_error.clear(); return FromUtf8(url); }
+            if (url.starts_with("https://") || url.starts_with("http://"))
+            {
+                m_quality_note = qi == 0 ? L"当前播放：无损" : (L"当前播放：" + quality_name + L"（无损未获取到：" + first_failure + L"）");
+                m_last_error.clear();
+                return FromUtf8(url);
+            }
         }
         if (m_last_error.empty()) m_last_error = L"波点没有返回可播放的音频地址";
         return {};

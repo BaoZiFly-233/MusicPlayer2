@@ -47,6 +47,7 @@ public:
     bool ValidateAccount();
     bool GetProfile(online::AccountProfile& profile) override;
     std::wstring GetCoverUrl(const online::Track& track) override;
+    std::wstring GetQualityNote() const override { return m_quality_note; }
     void LoadIdentity(const std::wstring& config_dir);
     bool SaveIdentity(const std::wstring& config_dir) const;
     void Logout() { SetAccount({}); }
@@ -64,6 +65,7 @@ protected:
     std::wstring AuthQuery() const;
     std::string m_devid;
     Account m_account;
+    std::wstring m_quality_note;   // 取播放地址时的音质说明（降级原因）
     mutable std::mutex m_account_mutex;
     std::wstring m_qr_key;
     ULONGLONG m_qr_created{};
