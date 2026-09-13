@@ -3,6 +3,7 @@
 #include "OnlineJson.h"
 #include "OnlineMusicModel.h"
 #include "OnlineMediaCache.h"
+#include "OnlinePlaylistImport.h"
 #include "BodianSource.h"
 #include "KugouSource.h"
 #include "bass.h"
@@ -285,6 +286,65 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
     }
     for (const auto& path : files) DeleteFileW(path.c_str());
     RemoveDirectoryW(temp_name);
+    // ---- 歌单跨平台导入：解析与匹配（纯离线，不联网）----
+    {
+        using namespace online;
+        const auto ref_netease = ParseShareText(L"https://music.163.com/playlist?id=3778678");
+        check(ref_netease.source == ImportSource::Netease && ref_netease.id == L"3778678", "netease playlist link");
+        const auto ref_qq = ParseShareText(L"https://y.qq.com/n/ryqq/playlist/7011264340");
+        check(ref_qq.source == ImportSource::QQ && ref_qq.id == L"7011264340", "qq playlist link");
+        // 用户从 App 复制出来的是一整段话，链接夹在中间
+        const auto ref_prose = ParseShareText(L"分享歌单《测试》http://music.163.com/playlist?id=12345 来自@网易云音乐");
+        check(ref_prose.source == ImportSource::Netease && ref_prose.id == L"12345", "share text with prose");
+        check(ParseShareText(L"http://163cn.tv/abc123").source == ImportSource::Netease, "netease short link recognized");
+        check(!ParseShareText(L"https://example.com/whatever").IsValid(), "unknown link rejected");
+
+        check(Similarity(L"abc", L"abc") == 100, "similarity identical");
+        check(Similarity(L"", L"abc") == 0, "similarity empty");
+
+        {   // 正常命中
+            ImportTrack source; source.title = L"戒烟"; source.artist = L"李荣浩"; source.duration_ms = 293000;
+            std::vector<Track> candidates;
+            Track good; good.virtual_path = L"kugou://AAA"; good.title = L"戒烟"; good.artist = L"李荣浩"; good.duration_ms = 293000;
+            Track other; other.virtual_path = L"kugou://BBB"; other.title = L"晴天"; other.artist = L"周杰伦"; other.duration_ms = 269000;
+            candidates.push_back(good); candidates.push_back(other);
+            const auto best = PickBest(source, candidates);
+            check(best.level == MatchLevel::Auto && best.candidate.virtual_path == L"kugou://AAA", "match picks correct song");
+        }
+        {   // 版本词：带 (Live) 的不能压过原版，哪怕它歌名歌手都接近满分
+            ImportTrack source; source.title = L"Lip & Hip"; source.artist = L"泫雅"; source.duration_ms = 209000;
+            std::vector<Track> candidates;
+            Track live; live.virtual_path = L"kugou://LIVE"; live.title = L"Lip & Hip (Live)"; live.artist = L"泫雅"; live.duration_ms = 208300;
+            Track studio; studio.virtual_path = L"kugou://STUDIO"; studio.title = L"Lip & Hip"; studio.artist = L"泫雅"; studio.duration_ms = 209000;
+            candidates.push_back(live); candidates.push_back(studio);
+            const auto best = PickBest(source, candidates);
+            check(best.candidate.virtual_path == L"kugou://STUDIO", "live version not preferred");
+        }
+        {   // 歌手别名：中文名 vs 括号里的外文名，拆分后两两比较才匹配得上
+            ImportTrack source; source.title = L"Lip & Hip"; source.artist = L"泫雅/郑镒勋";
+            std::vector<Track> candidates;
+            Track one; one.virtual_path = L"kugou://MIX"; one.title = L"Lip & Hip"; one.artist = L"泫雅 (HyunA)&정일훈";
+            candidates.push_back(one);
+            const auto best = PickBest(source, candidates);
+            check(best.candidate.virtual_path == L"kugou://MIX", "artist alias with brackets matches");
+        }
+        {   // 候选没返回时长时，这一项不该被当成 0 分拖低总分
+            ImportTrack source; source.title = L"戒烟"; source.artist = L"李荣浩"; source.duration_ms = 293000;
+            std::vector<Track> candidates;
+            Track no_duration; no_duration.virtual_path = L"kugou://NODUR"; no_duration.title = L"戒烟"; no_duration.artist = L"李荣浩";
+            candidates.push_back(no_duration);
+            const auto best = PickBest(source, candidates);
+            check(best.level == MatchLevel::Auto, "missing candidate duration is not penalized");
+        }
+        {   // 60 秒试听片段要被时长规则筛掉
+            ImportTrack source; source.title = L"Lip & Hip"; source.artist = L"泫雅"; source.duration_ms = 209000;
+            std::vector<Track> candidates;
+            Track clip; clip.virtual_path = L"kugou://CLIP"; clip.title = L"Lip & Hip"; clip.artist = L"泫雅"; clip.duration_ms = 60000;
+            candidates.push_back(clip);
+            const auto best = PickBest(source, candidates);
+            check(best.level == MatchLevel::NotFound, "60s preview rejected by duration");
+        }
+    }
     log << "\nfailures=" << failures << "\n";
     std::ofstream output(log_path, std::ios::binary); output << log.str();
     return failures == 0 && output.good();
