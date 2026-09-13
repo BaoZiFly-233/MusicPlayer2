@@ -70,15 +70,23 @@ bool OnlineMusicList::RButtonUp(CPoint point)
 {
     if (!rect.PtInRect(point)) return false;
     CMenu menu; menu.CreatePopupMenu();
-    menu.AppendMenuW(MF_STRING, 1, L"播放所选"); menu.AppendMenuW(MF_STRING, 2, L"加入播放队列");
-    menu.AppendMenuW(MF_STRING, 3, L"保存到本地歌单"); menu.AppendMenuW(MF_STRING, 4, L"导出所选歌曲…");
-    menu.AppendMenuW(MF_STRING, 5, L"查看歌词");
+    // 按用途分组：播放、文件、查看
+    menu.AppendMenuW(MF_STRING, 1, L"播放所选");
+    menu.AppendMenuW(MF_STRING, 2, L"加入播放队列");
+    menu.AppendMenuW(MF_SEPARATOR);
+    menu.AppendMenuW(MF_STRING, 3, L"下载所选歌曲到文件夹…");
+    menu.AppendMenuW(MF_STRING, 4, L"保存到本地歌单");
+    menu.AppendMenuW(MF_STRING, 5, L"导出所选歌曲…");
+    menu.AppendMenuW(MF_SEPARATOR);
+    menu.AppendMenuW(MF_STRING, 6, L"查看歌词");
     CPoint screen = point; ui->GetOwner()->ClientToScreen(&screen);
     UINT action = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, screen.x, screen.y, ui->GetOwner());
-    const Model::Action actions[] = { Model::Action::Play, Model::Action::Queue, Model::Action::Save, Model::Action::Export, Model::Action::Lyrics };
-    if (action >= 1 && action <= 5) Dispatch(actions[action - 1]);
+    const Model::Action actions[] = { Model::Action::Play, Model::Action::Queue, Model::Action::Download,
+        Model::Action::Save, Model::Action::Export, Model::Action::Lyrics };
+    if (action >= 1 && action <= _countof(actions)) Dispatch(actions[action - 1]);
     return true;
 }
+
 void OnlineMusicSearch::OnKeyWordsChanged() { Model::Instance().Post({Model::Action::Query, 0, key_word}); }
 void OnlineMusicSearch::OnSubmit() { Model::Instance().Post({Model::Action::Search}); }
 void OnlineMusicSearch::SyncQuery(const Model::State& state)

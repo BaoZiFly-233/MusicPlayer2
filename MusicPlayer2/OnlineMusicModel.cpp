@@ -469,8 +469,9 @@ void COnlineMusicModel::Execute(const Command& command)
     case Action::Save: SaveLocal(SelectedSongs(command.rows)); break;
     case Action::Download:
     {
-        auto songs = SelectedSongs(command.rows);
-        if (songs.empty()) { SetStatus(L"请先选择要保存的在线歌曲。"); break; }
+        // 选中了就下载选中的；没选中就整批下载当前列表（歌单页即批量下载整个歌单）
+        auto songs = command.rows.empty() ? SelectedSongs({}, true) : SelectedSongs(command.rows);
+        if (songs.empty()) { SetStatus(L"当前列表没有可下载的歌曲。"); break; }
         std::wstring directory;
         if (!GetOnlineDownloadDirectory(m_owner, directory)) break;
         size_t count{};
