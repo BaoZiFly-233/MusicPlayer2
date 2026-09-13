@@ -224,8 +224,8 @@ wstring COnlineMediaCache::AudioExtension(const string& h)
     if (h.compare(0, 3, "ID3") == 0 || (static_cast<unsigned char>(h[0]) == 0xff && (static_cast<unsigned char>(h[1]) & 0xe0) == 0xe0)) return L".mp3";
     return {};
 }
-static bool Download(const wstring& url, const fs::path& temporary, const function<bool()>& cancelled,
-    wstring& extension, wstring& error, bool cover = false)
+static bool DownloadOnce(const wstring& url, const fs::path& temporary, const function<bool()>& cancelled,
+    wstring& extension, wstring& error, bool cover)
 {
     const uintmax_t limit = cover ? 8ULL * 1024 * 1024 : FILE_LIMIT;
     URL_COMPONENTS parts{sizeof(URL_COMPONENTS)};
@@ -281,6 +281,20 @@ static bool Download(const wstring& url, const fs::path& temporary, const functi
     if (total < (cover ? 32 : 1024) || (has_length && total != expected) || extension.empty() || !output)
     { error = L"音频不完整或格式不支持，未加入缓存"; return false; }
     return true;
+}
+// Same-origin retry over the other scheme. Image and audio CDNs of both platforms serve
+// HTTPS, but some responses still hand out plain http URLs, and WinHTTP can fail to connect
+// to those (proxy policy, plaintext blocked). Retry once on the secure scheme before giving up.
+static bool Download(const wstring& url, const fs::path& temporary, const function<bool()>& cancelled,
+    wstring& extension, wstring& error, bool cover = false)
+{
+    if (DownloadOnce(url, temporary, cancelled, extension, error, cover)) return true;
+    if (!url.starts_with(L"http://")) return false;
+    const wstring secure = L"https://" + url.substr(7);
+    wstring retry_error;
+    if (DownloadOnce(secure, temporary, cancelled, extension, retry_error, cover)) return true;
+    error = retry_error.empty() ? error : retry_error;
+    return false;
 }
 void COnlineMediaCache::Run(const shared_ptr<State>& state, bool lyrics)
 {
