@@ -80,7 +80,12 @@ IOnlineSource* COnlineMusicModel::CurrentSource() const
     const auto& sources = CSourceRegistry::Instance().GetAll();
     return m_state.source >= 0 && m_state.source < static_cast<int>(sources.size()) ? sources[m_state.source] : nullptr;
 }
-void COnlineMusicModel::SetStatus(const wstring& status) { m_state.status = status; Publish(); }
+void COnlineMusicModel::SetStatus(const wstring& status)
+{
+    // 调用方里有定时器路径，内容没变就不要重建快照
+    if (m_state.status == status) return;
+    m_state.status = status; Publish();
+}
 void COnlineMusicModel::SetPlaybackError(const wstring& error)
 {
     if (m_state.playback_error == error) return;

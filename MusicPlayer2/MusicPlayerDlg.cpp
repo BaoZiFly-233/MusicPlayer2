@@ -2549,6 +2549,15 @@ void CMusicPlayerDlg::OnTimer(UINT_PTR nIDEvent)
             COnlineMusicModel::Instance().SetPlaybackError(online_error ? player.GetErrorInfo() : L"");
             // 播放失败时把这首在线曲目标记下来，列表里会显示成灰色
             if (online_error) COnlineMusicModel::Instance().MarkUnplayable(player.GetCurrentFilePath());
+            // 播放成功时把音质说明显示出来：当前是无损还是降级了、上面几档为什么没拿到
+            if (!online_error && online::CSourceRegistry::IsVirtualPath(player.GetCurrentFilePath()))
+            {
+                if (auto* online_source = online::CSourceRegistry::Instance().FindByPath(player.GetCurrentFilePath()))
+                {
+                    const auto quality_note = online_source->GetQualityNote();
+                    if (!quality_note.empty()) COnlineMusicModel::Instance().SetStatus(quality_note);
+                }
+            }
             if (player.IsPlaying()) player.PrepareNextTrack();
             const auto next = !player.IsPlaylistEmpty() && player.IsPlaying() && player.GetRepeatMode() != RM_PLAY_TRACK
                 ? player.GetNextTrack().file_path : L"";

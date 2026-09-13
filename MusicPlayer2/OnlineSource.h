@@ -97,6 +97,9 @@ public:
     // 取歌词。失败返回 false 即可，不影响播放。
     virtual bool GetLyric(const std::wstring& virtual_path, Lyric& result) { return false; }
     virtual std::wstring GetCoverUrl(const Track& track) { return {}; }
+    // 上一次取播放地址时的音质说明。比如「已降级到 320k：无损需要会员」。
+    // 拿不到最好音质时靠它告诉用户原因，而不是默默降级。
+    virtual std::wstring GetQualityNote() const { return std::wstring(); }
     virtual bool GetProfile(AccountProfile& profile) { return false; }
 
     // 上一次操作的失败原因，可直接显示给用户。
