@@ -297,6 +297,7 @@
     <ClInclude Include="ListSearchCache.h" />
     <ClInclude Include="LyricRelateDlg.h" />
         <ClInclude Include="KugouLoginDlg.h" />
+    <ClInclude Include="KugouKrc.h" />
 <ClInclude Include="KugouCrypto.h" />
     <ClInclude Include="KugouSource.h" />
     <ClInclude Include="md5.h" />
@@ -562,6 +563,7 @@
     <ClCompile Include="ListSearchCache.cpp" />
     <ClCompile Include="LyricRelateDlg.cpp" />
         <ClCompile Include="KugouLoginDlg.cpp" />
+    <ClCompile Include="KugouKrc.cpp" />
 <ClCompile Include="KugouCrypto.cpp" />
     <ClCompile Include="KugouSource.cpp" />
     <ClCompile Include="md5.cpp" />
@@ -705,7 +707,10 @@
     <ClCompile Include="MusicPlayerCmdHelper.cpp" />
     <ClCompile Include="PlayerProgressBar.cpp" />
     <ClCompile Include="PlayerToolBar.cpp" />
-        <ClCompile Include="qrcodegen\qrcodegen.cpp">
+        <ClCompile Include="puff\puff.c">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="qrcodegen\qrcodegen.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
 <ClCompile Include="Playlist.cpp" />

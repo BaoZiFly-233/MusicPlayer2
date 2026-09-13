@@ -3,6 +3,7 @@
 #include "OnlineJson.h"
 #include "OnlineHttp.h"
 #include "KugouCrypto.h"
+#include "KugouKrc.h"
 #include "InternetCommon.h"
 #include "IniHelper.h"
 #include <ctime>
@@ -523,7 +524,8 @@ bool CKugouSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
     query += "&signature=" + SignatureAndroid(params, "");
     const wstring headers = L"User-Agent: " + FromUtf8(DEFAULT_USER_AGENT) + L"\r\n";
     wstring search_text;
-    if (!online::HttpRequest(L"https://lyrics.kugou.com/v1/search?" + FromUtf8(query), "", headers, search_text, m_last_error)) return false;
+    if (!online::HttpRequest(L"https://lyrics.kugou.com/v1/search?" + FromUtf8(query), "", headers, search_text, m_last_error))
+        return false;
     json search_result;
     try { search_result = json::parse(ToUtf8(search_text)); }
     catch (const json::exception&) { m_last_error = L"酷狗歌词搜索响应无法解析"; return false; }
@@ -536,12 +538,40 @@ bool CKugouSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
     if (id.empty() || accesskey.empty())
         return false;
 
-    // 第二步：下载歌词。这里要 lrc 格式，krc 需要额外解密，先用能直接用的。
-    wstring download_url = wstring(L"https://lyrics.kugou.com/download?id=") +
+    // 第二步：下载歌词。
+    // 优先要 krc —— 它是带逐字时间轴的版本，能做逐字填色，而且有些歌只有 krc 没有 lrc
+    // （这正是之前「有时候拿不到歌词」的一个原因）。krc 是加密的，解密后再转成
+    // 播放器能识别的逐字歌词格式。
+    wstring response_text;
+    {
+        const wstring krc_url = wstring(L"https://lyrics.kugou.com/download?ver=1&client=pc&id=") +
+            FromUtf8(UrlEncode(id)) + L"&accesskey=" + FromUtf8(UrlEncode(accesskey)) + L"&fmt=krc&charset=utf8";
+        if (online::HttpRequest(krc_url, "", headers, response_text, m_last_error))
+        {
+            try
+            {
+                const json obj = json::parse(ToUtf8(response_text));
+                const string content = obj.value("content", "");
+                if (!content.empty())
+                {
+                    const wstring lyric_text = KrcToExtendedLyric(DecryptKrc(content));
+                    if (!lyric_text.empty())
+                    {
+                        result.content = lyric_text;
+                        m_last_error.clear();
+                        return result.HasContent();
+                    }
+                }
+            }
+            catch (const json::exception&) { }
+        }
+    }
+
+    // krc 没拿到就退回普通 lrc
+    const wstring download_url = wstring(L"https://lyrics.kugou.com/download?id=") +
         FromUtf8(UrlEncode(id)) + L"&accesskey=" + FromUtf8(UrlEncode(accesskey)) +
         L"&fmt=lrc&charset=utf8&client=android&ver=1";
 
-    wstring response_text;
     if (!online::HttpRequest(download_url, "", headers, response_text, m_last_error))
         return false;
 
