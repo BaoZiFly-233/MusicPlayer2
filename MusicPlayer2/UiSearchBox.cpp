@@ -36,12 +36,14 @@ void CUiSearchBox::Show(UiElement::SearchBox* ui_search_box, bool big_icon)
     {
         CFont& font{ theApp.m_font_set.dlg.GetFont(big_icon) };
         CCommon::SetDialogFont(this, &font);
+        m_search_box.SetWindowText(ui_search_box->key_word.c_str());
         ShowWindow(SW_SHOW);
         CRect rect = ui_search_box->GetRect();
         m_pParentWnd->ClientToScreen(&rect);
         MoveWindow(rect);
         m_search_box.OnChangeLayout();
         m_search_box.SetBigIcon(big_icon);
+        m_search_box.SetFocus();
     }
 }
 
@@ -111,8 +113,14 @@ void CUiSearchBox::OnSize(UINT nType, int cx, int cy)
 void CUiSearchBox::OnCancel()
 {
     // TODO: 在此添加专用代码和/或调用基类
-    DestroyWindow();
+    ShowWindow(SW_HIDE);
     //CDialog::OnCancel();
+}
+
+void CUiSearchBox::OnOK()
+{
+    if (m_ui_search_box != nullptr) m_ui_search_box->OnSubmit();
+    ShowWindow(SW_HIDE);
 }
 
 

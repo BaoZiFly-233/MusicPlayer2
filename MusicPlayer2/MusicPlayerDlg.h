@@ -32,6 +32,7 @@
 #include "CHotkeyManager.h"
 #include "ListCache.h"
 #include "ProcessMsgHelper.h"
+#include "OnlineMusicModel.h"
 
 #define WM_ALBUM_COVER_DOWNLOAD_COMPLETE (WM_USER+114)      //自动下载专辑封面和歌词完成时发出的消息
 
@@ -133,9 +134,8 @@ protected:
     vector<int> m_items_selected;
     int m_tab_selected{};       //选项设置中选择的标签
 
-    // 在线音乐搜索里双击选中的曲目，等对话框销毁后由 OnPlayOnlineSong 播放
-    SongInfo m_online_song;
-    bool m_has_online_song{ false };
+    // 切换当前皮肤中的在线音乐内容页。
+    void ToggleOnlinePage();
 
     CMiniModeDlg m_miniModeDlg{ m_item_selected, m_items_selected };        //迷你模式对话框
 
@@ -315,7 +315,7 @@ protected:
     afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
     afx_msg void OnPaint();
     afx_msg HCURSOR OnQueryDragIcon();
-    // 播放在线音乐搜索里双击选中的曲目（消息在对话框销毁后才会处理）
+    // 处理原生在线工作区的命令和播放请求。
     afx_msg LRESULT OnPlayOnlineSong(WPARAM wParam, LPARAM lParam);
     DECLARE_MESSAGE_MAP()
 

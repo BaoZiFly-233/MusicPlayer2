@@ -1,5 +1,26 @@
 ﻿#include "stdafx.h"
 #include "OnlineSource.h"
+#include "OnlineMediaCache.h"
+
+bool online::IOnlineSource::Browse(const BrowseRequest& request, BrowseResult& result)
+{
+    result = {};
+    if (request.kind != BrowseKind::Search)
+        return false;
+    std::vector<Track> tracks;
+    if (!Search(request.id, request.page, tracks))
+        return false;
+    for (const auto& track : tracks)
+    {
+        BrowseItem item;
+        item.track = track;
+        item.title = track.title;
+        item.subtitle = track.artist;
+        result.items.push_back(item);
+    }
+    result.has_more = tracks.size() >= 30;
+    return true;
+}
 #include "KugouSource.h"
 #include "BodianSource.h"
 
@@ -90,6 +111,9 @@ wstring CSourceRegistry::ResolvePlayUrl(const wstring& path)
     if (source == nullptr)
         return wstring();
 
+    auto& cache = COnlineMediaCache::Instance();
+    auto cached = cache.FindAudio(path);
+    if (!cached.empty()) return cached;
     return source->ResolvePlayUrl(path);
 }
 

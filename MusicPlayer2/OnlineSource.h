@@ -8,8 +8,8 @@
 // 设计要点：在线歌曲在曲库/播放列表里用一个「虚拟路径」作为唯一标识，
 // 例如 kugou://<hash>、bodian://<rid>。这样 SongKey（file_path + cue_track）
 // 这套既有机制无需改动，曲库、歌单、收藏都能直接复用。
-// 真正播放前，由本层把虚拟路径解析成实际的 http(s) 播放地址，
-// 再交给 IPlayerCore::Open()；BASS 会走 BASS_StreamCreateURL 拉流播放。
+// 真正播放前，由本层选择完整本地缓存或实际的 http(s) 播放地址，
+// 再交给 IPlayerCore::Open()。
 //
 // 一个音源需要提供的能力，按使用顺序排列：
 //   1. GetScheme()           —— 声明自己负责哪个虚拟路径前缀
@@ -29,6 +29,7 @@ struct Track
     std::wstring title;             // 标题
     std::wstring artist;            // 艺术家
     std::wstring album;             // 唱片集
+    std::wstring cover_url;
     int duration_ms{ 0 };           // 时长（毫秒），未知为 0
     std::wstring extra;             // 音源私有附加信息（如 album_audio_id），播放时回传
 
@@ -40,6 +41,36 @@ struct Lyric
 {
     std::wstring content;           // 歌词文本（已解码成 LRC 文本）
     bool HasContent() const { return !content.empty(); }
+};
+
+enum class BrowseKind { Search, Hot, Recommend, Charts, ChartTracks, Playlists, PlaylistTracks, PlaylistSearch };
+enum class QrStatus { Expired, Waiting, Scanned, Authorized, Failed };
+struct AccountProfile
+{
+    std::wstring name, membership, expires;
+};
+
+struct BrowseRequest
+{
+    BrowseKind kind{ BrowseKind::Hot };
+    std::wstring id;       // 搜索词、分类编号或歌单编号，不接受任意接口地址
+    int page{ 1 };
+};
+
+struct BrowseItem
+{
+    enum class Type { Song, Keyword, Chart, Playlist };
+    Type type{ Type::Song };
+    Track track;
+    std::wstring id;
+    std::wstring title;
+    std::wstring subtitle;
+};
+
+struct BrowseResult
+{
+    std::vector<BrowseItem> items;
+    bool has_more{ false };
 };
 
 // 音源接口
@@ -57,12 +88,16 @@ public:
     // 按关键字搜索
     virtual bool Search(const std::wstring& keyword, int page, std::vector<Track>& result) = 0;
 
+    virtual bool Browse(const BrowseRequest& request, BrowseResult& result);
+
     // 把虚拟路径解析成可直接播放的 http(s) 地址。
     // 返回空字符串表示失败（无版权、需会员、接口变更等）。
     virtual std::wstring ResolvePlayUrl(const std::wstring& virtual_path) = 0;
 
     // 取歌词。失败返回 false 即可，不影响播放。
     virtual bool GetLyric(const std::wstring& virtual_path, Lyric& result) { return false; }
+    virtual std::wstring GetCoverUrl(const Track& track) { return {}; }
+    virtual bool GetProfile(AccountProfile& profile) { return false; }
 
     // 上一次操作的失败原因，可直接显示给用户。
     // 播放失败时界面靠它给出「需要会员」这类准确提示，而不是笼统的「播放失败」。
@@ -90,7 +125,7 @@ public:
     // 按 scheme 找音源（不区分大小写）。
     IOnlineSource* FindByScheme(const std::wstring& scheme);
 
-    // 解析成可播放地址。失败返回空字符串。
+    // 解析成完整缓存文件或可播放地址。失败返回空字符串。
     // 传入本地路径时原样返回，方便调用方无脑调用。
     std::wstring ResolvePlayUrl(const std::wstring& path);
 

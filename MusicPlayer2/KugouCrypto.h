@@ -61,7 +61,7 @@ std::string SignatureAndroid(const std::vector<SignParam>& params, const std::st
 // 算法与 Android 版相同，只是 salt 不同。
 std::string SignatureWeb(const std::vector<SignParam>& params);
 
-// 计算 v5 取址接口的 key（该接口不签名，但需要 key）
+// 计算 v5 取址接口的 key；请求仍须携带完整参数的 Android 签名。
 //   MD5( hash + salt + appid + mid + userid )
 std::string CalcV5Key(const std::string& hash, const std::string& mid, const std::string& userid);
 
@@ -91,6 +91,8 @@ std::string AesDecryptForRegister(const std::string& cipher_base64, const std::s
 // RSA 公钥加密，PKCS#1 v1.5 填充，输出十六进制小写字符串。
 // public_key_base64 是 X.509 SubjectPublicKeyInfo 的 Base64（不带 PEM 头尾）。
 std::string RsaEncryptPkcs1(const std::string& plain, const std::string& public_key_base64);
+// 用户资料接口使用右侧补零的原始 RSA 块，与设备注册的 PKCS1 填充不同。
+std::string RsaEncryptRaw(const std::string& plain);
 
 // 生成一个 6 位小写随机串，用作设备注册的 AES key
 std::string RandomKey6();

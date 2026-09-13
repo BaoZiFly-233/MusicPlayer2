@@ -13,7 +13,8 @@ namespace UiElement
         SearchBox();
         ~SearchBox();
         void InitSearchBoxControl(CWnd* pWnd);  //初始化搜索框控件。pWnd：父窗口
-        void OnKeyWordsChanged();
+        virtual void OnKeyWordsChanged();
+        virtual void OnSubmit() {}
         void Clear();
         AbstractListElement* GetListElement() { return list_element; }
 

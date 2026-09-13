@@ -82,6 +82,7 @@ void CDesktopLyric::UpdateLyric(Gdiplus::Graphics* pGraphics, Gdiplus::Font* pFo
         auto& now_lyrics{ CPlayer::GetInstance().m_Lyrics };
         CPlayTime time{ CPlayer::GetInstance().GetCurrentPosition() };
         CLyrics::Lyric lyric{ now_lyrics.GetLyric(time, false, ignore_blank, karaoke) };
+        SetLyricKaraokeDisplay(karaoke && lyric.HasWordTiming());
         bool is_lyric_empty{ lyric.text.empty() };
         int progress{ now_lyrics.GetLyricProgress(time, ignore_blank, karaoke,
             [&](const wstring& str)

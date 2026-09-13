@@ -465,7 +465,7 @@ string AesDecryptForRegister(const string& cipher_base64, const string& key6)
     return result;
 }
 
-string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
+static string RsaEncryptLite(const string& plain, bool raw)
 {
     // 这里用的是酷狗概念版的 RSA 公钥。它是固定常量，所以直接把 CNG 需要的
     // BCRYPT_RSAPUBLIC_BLOB 字节写死，不再运行时解析 X.509 —— 之前手写的解析
@@ -490,7 +490,9 @@ string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
     0xba, 0x89, 0xf4, 0xa2, 0xa0, 0x1b, 0x33, 0xbd, 0xbd, 0xd0, 0x8b,
     };
 
-    (void)public_key_base64;    // 保留参数是为了以后换公钥时方便
+    if (raw && plain.size() > 128) return {};
+    string input = plain;
+    if (raw) input.resize(128, '\0');
 
     BCRYPT_ALG_HANDLE alg = nullptr;
     BCRYPT_KEY_HANDLE key = nullptr;
@@ -510,15 +512,15 @@ string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
         pad.pszAlgId = nullptr;     // RSAES-PKCS1-v1_5 不用这个字段
 
         ULONG needed = 0;
-        if (BCryptEncrypt(key, reinterpret_cast<PUCHAR>(const_cast<char*>(plain.data())),
-            static_cast<ULONG>(plain.size()), &pad, nullptr, 0,
-            nullptr, 0, &needed, BCRYPT_PAD_PKCS1) != 0)
+        if (BCryptEncrypt(key, reinterpret_cast<PUCHAR>(input.data()),
+            static_cast<ULONG>(input.size()), raw ? nullptr : &pad, nullptr, 0,
+            nullptr, 0, &needed, raw ? BCRYPT_PAD_NONE : BCRYPT_PAD_PKCS1) != 0)
             break;
 
         cipher.resize(needed);
-        if (BCryptEncrypt(key, reinterpret_cast<PUCHAR>(const_cast<char*>(plain.data())),
-            static_cast<ULONG>(plain.size()), &pad, nullptr, 0,
-            cipher.data(), static_cast<ULONG>(cipher.size()), &needed, BCRYPT_PAD_PKCS1) != 0)
+        if (BCryptEncrypt(key, reinterpret_cast<PUCHAR>(input.data()),
+            static_cast<ULONG>(input.size()), raw ? nullptr : &pad, nullptr, 0,
+            cipher.data(), static_cast<ULONG>(cipher.size()), &needed, raw ? BCRYPT_PAD_NONE : BCRYPT_PAD_PKCS1) != 0)
             break;
         cipher.resize(needed);
 
@@ -539,4 +541,10 @@ string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
 
     return result;
 }
+string RsaEncryptPkcs1(const string& plain, const string& public_key_base64)
+{
+    (void)public_key_base64;
+    return RsaEncryptLite(plain, false);
+}
+string RsaEncryptRaw(const string& plain) { return RsaEncryptLite(plain, true); }
 } // namespace kugou

@@ -1,5 +1,7 @@
 ﻿#include "stdafx.h"
 #include "KugouSource.h"
+#include "OnlineJson.h"
+#include "OnlineHttp.h"
 #include "KugouCrypto.h"
 #include "InternetCommon.h"
 #include "IniHelper.h"
@@ -33,8 +35,112 @@ CKugouSource::CKugouSource()
 {
 }
 
+CKugouSource::CKugouSource(const CKugouSource& source)
+{
+    std::lock_guard<std::mutex> lock(source.m_state_mutex);
+    m_device = source.m_device;
+    m_account = source.m_account;
+}
+
 CKugouSource::~CKugouSource()
 {
+}
+
+bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseResult& result)
+{
+    using namespace online;
+    result = {};
+    m_last_error.clear();
+    if (request.kind == BrowseKind::Search) return IOnlineSource::Browse(request, result);
+    if ((request.kind == BrowseKind::Playlists || request.kind == BrowseKind::Recommend) && !IsLoggedIn())
+    {
+        m_last_error = L"请在账号页登录酷狗概念版后查看个人推荐和云歌单。";
+        return false;
+    }
+    vector<pair<string, string>> params = {
+        {"dfid", m_device.dfid}, {"mid", m_device.mid}, {"uuid", "-"},
+        {"appid", LITE_APPID}, {"clientver", LITE_CLIENTVER},
+        {"clienttime", to_string(time(nullptr))}
+    };
+    wstring path, router;
+    string body;
+    int page = (std::max)(1, request.page);
+    switch (request.kind)
+    {
+    case BrowseKind::Hot:
+        path = L"/api/v3/search/hot_tab"; router = L"msearch.kugou.com";
+        params.push_back({"navid", "1"}); params.push_back({"plat", "2"}); break;
+    case BrowseKind::Charts:
+        path = L"/ocean/v6/rank/list";
+        params.push_back({"plat", "2"}); params.push_back({"withsong", "0"}); params.push_back({"parentid", "0"}); break;
+    case BrowseKind::ChartTracks:
+        if (!IsServiceId(request.id)) { m_last_error = L"榜单编号无效"; return false; }
+        path = L"/openapi/kmr/v2/rank/audio";
+        body = json{{"show_portrait_mv", 1}, {"show_type_total", 1}, {"filter_original_remarks", 1},
+            {"area_code", 1}, {"pagesize", 30}, {"rank_cid", 0}, {"type", 1}, {"page", page}, {"rank_id", ToUtf8(request.id)}}.dump(); break;
+    case BrowseKind::Recommend:
+        path = L"/everyday_song_recommend"; router = L"everydayrec.service.kugou.com";
+        body = json{{"platform", "android"}, {"userid", GetAccount().userid}}.dump(); break;
+    case BrowseKind::Playlists:
+        path = L"/v7/get_all_list"; router = L"cloudlist.service.kugou.com";
+        params.push_back({"plat", "1"});
+        body = json{{"userid", GetAccount().userid}, {"token", GetAccount().token}, {"total_ver", 979},
+            {"type", 2}, {"page", page}, {"pagesize", 30}}.dump(); break;
+    case BrowseKind::PlaylistTracks:
+        if (!IsServiceId(request.id)) { m_last_error = L"歌单编号无效，请输入酷狗 global_collection_id"; return false; }
+        path = L"/pubsongs/v2/get_other_list_file_nofilt";
+        params.insert(params.end(), {{"area_code", "1"}, {"begin_idx", to_string((page - 1) * 30)},
+            {"plat", "1"}, {"type", "1"}, {"mode", "1"}, {"personal_switch", "1"},
+            {"pagesize", "30"}, {"global_collection_id", ToUtf8(request.id)}}); break;
+    default: return false;
+    }
+    json response;
+    if (!Request(path, router, params, body, response)) return false;
+    if (JsonNumber(response, "status") != 1 || !response.contains("data"))
+    {
+        m_last_error = L"酷狗服务未返回列表（错误码 " + FromUtf8(JsonText(response, "error_code")) + L"），请检查登录状态或稍后重试。";
+        return false;
+    }
+    const auto& data = response["data"];
+    if (request.kind == BrowseKind::Hot)
+    {
+        if (!data.contains("list") || !data["list"].is_array()) { m_last_error = L"热搜数据格式已变化"; return false; }
+        for (const auto& group : data["list"])
+        {
+            if (!group.contains("keywords") || !group["keywords"].is_array()) continue;
+            for (const auto& value : group["keywords"])
+            {
+                BrowseItem item;
+                item.type = BrowseItem::Type::Keyword;
+                item.id = item.title = FromUtf8(JsonText(value, "keyword"));
+                item.subtitle = FromUtf8(JsonText(group, "name"));
+                if (!item.title.empty()) result.items.push_back(item);
+            }
+        }
+        return true;
+    }
+    // 这些字段分别对应榜单、云歌单、歌单歌曲和每日推荐的已知响应契约。
+    const json* list = data.is_array() ? &data : nullptr;
+    for (const char* key : {"info", "list", "songs", "song_list", "songlist"})
+        if (list == nullptr && data.contains(key) && data[key].is_array()) list = &data[key];
+    if (list == nullptr) { m_last_error = L"酷狗列表数据格式已变化"; return false; }
+    for (const auto& value : *list)
+    {
+        if (request.kind == BrowseKind::Charts || request.kind == BrowseKind::Playlists)
+        {
+            BrowseItem item;
+            bool chart = request.kind == BrowseKind::Charts;
+            item.type = chart ? BrowseItem::Type::Chart : BrowseItem::Type::Playlist;
+            item.id = FromUtf8(JsonText(value, chart ? "rankid" : "global_collection_id"));
+            item.title = FromUtf8(JsonText(value, chart ? "rankname" : "name"));
+            item.subtitle = chart ? L"双击查看榜单" : L"双击查看云歌单";
+            if (IsServiceId(item.id)) result.items.push_back(item);
+        }
+        else AddTrack(result, KugouTrack(value));
+    }
+    result.has_more = request.kind != BrowseKind::Charts && request.kind != BrowseKind::Recommend && list->size() >= 30;
+    if (!list->empty() && result.items.empty()) { m_last_error = L"接口有返回数据，但曲目标识不完整"; return false; }
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -74,11 +180,13 @@ void CKugouSource::LoadIdentity(const wstring& config_dir)
     if (m_device.dfid.empty())
         m_device.dfid = "-";        // 还没注册设备时先用占位符
 
-    m_account.token = ToUtf8(ini.GetString(SEC_ACCOUNT, L"token", L""));
-    m_account.userid = ToUtf8(ini.GetString(SEC_ACCOUNT, L"userid", L""));
-    m_account.t1 = ToUtf8(ini.GetString(SEC_ACCOUNT, L"t1", L""));
-    m_account.vip_type = ToUtf8(ini.GetString(SEC_ACCOUNT, L"vip_type", L""));
-    m_account.vip_token = ToUtf8(ini.GetString(SEC_ACCOUNT, L"vip_token", L""));
+    Account loaded;
+    loaded.token = ToUtf8(ini.GetString(SEC_ACCOUNT, L"token", L""));
+    loaded.userid = ToUtf8(ini.GetString(SEC_ACCOUNT, L"userid", L""));
+    loaded.t1 = ToUtf8(ini.GetString(SEC_ACCOUNT, L"t1", L""));
+    loaded.vip_type = ToUtf8(ini.GetString(SEC_ACCOUNT, L"vip_type", L""));
+    loaded.vip_token = ToUtf8(ini.GetString(SEC_ACCOUNT, L"vip_token", L""));
+    SetAccount(loaded);
 }
 
 void CKugouSource::SaveIdentity(const wstring& config_dir) const
@@ -92,11 +200,11 @@ void CKugouSource::SaveIdentity(const wstring& config_dir) const
     ini.WriteString(SEC_DEVICE, L"dfid", FromUtf8(m_device.dfid));
     ini.WriteString(SEC_DEVICE, L"server_dev", FromUtf8(m_device.server_dev));
 
-    ini.WriteString(SEC_ACCOUNT, L"token", FromUtf8(m_account.token));
-    ini.WriteString(SEC_ACCOUNT, L"userid", FromUtf8(m_account.userid));
-    ini.WriteString(SEC_ACCOUNT, L"t1", FromUtf8(m_account.t1));
-    ini.WriteString(SEC_ACCOUNT, L"vip_type", FromUtf8(m_account.vip_type));
-    ini.WriteString(SEC_ACCOUNT, L"vip_token", FromUtf8(m_account.vip_token));
+    ini.WriteString(SEC_ACCOUNT, L"token", FromUtf8(GetAccount().token));
+    ini.WriteString(SEC_ACCOUNT, L"userid", FromUtf8(GetAccount().userid));
+    ini.WriteString(SEC_ACCOUNT, L"t1", FromUtf8(GetAccount().t1));
+    ini.WriteString(SEC_ACCOUNT, L"vip_type", FromUtf8(GetAccount().vip_type));
+    ini.WriteString(SEC_ACCOUNT, L"vip_token", FromUtf8(GetAccount().vip_token));
 
     ini.Save();
 }
@@ -107,7 +215,7 @@ void CKugouSource::SaveIdentity(const wstring& config_dir) const
 
 bool CKugouSource::Request(const wstring& url_path, const wstring& router,
     const vector<pair<string, string>>& extra_params,
-    const string& body, json& out_json, bool need_sign)
+    const string& body, json& out_json, bool need_sign, const wchar_t* method, const wchar_t* base_url)
 {
     // 组装业务参数
     vector<SignParam> params;
@@ -126,10 +234,10 @@ bool CKugouSource::Request(const wstring& url_path, const wstring& router,
         }
     }
     if (!has_userid)
-        params.push_back({ "userid", m_account.IsLoggedIn() ? m_account.userid : "0" });
+        params.push_back({ "userid", GetAccount().IsLoggedIn() ? GetAccount().userid : "0" });
 
     // 登录后带上 token
-    if (m_account.IsLoggedIn())
+    if (GetAccount().IsLoggedIn())
     {
         bool has_token = false;
         for (const auto& p : params)
@@ -141,7 +249,7 @@ bool CKugouSource::Request(const wstring& url_path, const wstring& router,
             }
         }
         if (!has_token)
-            params.push_back({ "token", m_account.token });
+            params.push_back({ "token", GetAccount().token });
     }
 
     // 组装查询串。签名要用到全部参数，所以先收集再拼接。
@@ -167,7 +275,7 @@ bool CKugouSource::Request(const wstring& url_path, const wstring& router,
         query += signature;
     }
 
-    wstring url = wstring(API_BASE) + url_path + L"?" + FromUtf8(query);
+    wstring url = wstring(base_url ? base_url : API_BASE) + url_path + L"?" + FromUtf8(query);
 
     // 请求头。dfid/clienttime 这些在官方实现里是放在头里的。
     {
@@ -185,9 +293,13 @@ bool CKugouSource::Request(const wstring& url_path, const wstring& router,
             headers_str += "x-router: " + ToUtf8(router) + "\r\n";
 
         wstring result;
-        int ret = CInternetCommon::HttpGet(url, result, FromUtf8(headers_str), false);
-        if (ret != CInternetCommon::SUCCESS || result.empty())
+        if (!body.empty()) headers_str += "Content-Type: application/json\r\n";
+        else if (method && wcscmp(method, L"POST") == 0) headers_str += "Content-Type: application/x-www-form-urlencoded\r\n";
+        if (url_path == L"/openapi/kmr/v2/rank/audio") headers_str += "kg-tid: 369\r\n";
+        if (!online::HttpRequest(url, body, FromUtf8(headers_str), result, m_last_error, method))
+        {
             return false;
+        }
 
         try
         {
@@ -269,6 +381,7 @@ bool CKugouSource::Search(const wstring& keyword, int page, vector<online::Track
         track.album = FromUtf8(item.value("AlbumName", ""));
         track.duration_ms = item.value("Duration", 0) * 1000;   // 接口返回的是秒
         track.extra = FromUtf8(mixsongid);
+        track.cover_url = online::CoverUrl(item);
 
         result.push_back(track);
     }
@@ -311,8 +424,11 @@ wstring CKugouSource::ResolvePlayUrl(const wstring& virtual_path)
 
 wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_audio_id)
 {
+    m_last_error.clear();
     if (hash.empty())
         return wstring();
+
+    const Account account = GetAccount();
 
     // 音质从高到低尝试。拿不到高音质时自动降级，
     // 这样 VIP 过期或某档位无版权时仍能播。
@@ -323,9 +439,8 @@ wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_aud
         char clienttime[32]{};
         sprintf_s(clienttime, "%lld", static_cast<long long>(time(nullptr)));
 
-        // 取地址接口不签名，但需要 key。
-        // userid 未登录时为 0，key 仍要按这个规则算。
-        string userid = m_account.IsLoggedIn() ? m_account.userid : "0";
+        // 播放接口同时校验 key 与完整请求签名，账号参数使用同一份快照。
+        string userid = account.IsLoggedIn() ? account.userid : "0";
         string key = CalcV5Key(ToUtf8(hash), m_device.mid, userid);
 
         vector<pair<string, string>> params = {
@@ -347,10 +462,10 @@ wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_aud
             { "module",         "" },
             { "key",            key },
         };
-        if (m_account.IsLoggedIn())
+        if (account.IsLoggedIn())
         {
-            params.push_back({ "token",  m_account.token });
-            params.push_back({ "userid", m_account.userid });
+            params.push_back({ "token",  account.token });
+            params.push_back({ "userid", account.userid });
         }
         else
         {
@@ -359,49 +474,11 @@ wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_aud
         }
 
         json response;
-        // 这个接口按官方实现是不签名的（用 key 代替 signature）
-        if (!Request(L"/v5/url", ROUTER_TRACKER, params, "", response, false))
-            continue;
-
-        if (!response.contains("data"))
-            continue;
-
-        const auto& data = response["data"];
-        if (!data.is_object())
-            continue;
-
-        // 有权限时直接给地址。优先用备用地址，主地址在部分网络下会返回 403。
-        string url = data.value("backup_url", "");
-        if (url.empty())
-            url = data.value("url", "");
-
-        if (!url.empty())
-            return FromUtf8(url);
-
-        // 没有地址时区分原因，便于界面给出准确提示而不是笼统的「播放失败」。
-        // priv_status 为 0 且 fail_process 含 pkg/buy，说明这首歌需要购买或会员。
-        int priv_status = data.value("priv_status", 1);
-        bool need_purchase = false;
-        if (data.contains("fail_process") && data["fail_process"].is_array())
-        {
-            for (const auto& f : data["fail_process"])
-            {
-                if (f.is_string())
-                {
-                    string reason = f.get<string>();
-                    if (reason == "pkg" || reason == "buy")
-                        need_purchase = true;
-                }
-            }
-        }
-
-        if (priv_status == 0 && need_purchase)
-        {
-            m_last_error = m_account.IsLoggedIn()
-                ? L"这首歌需要购买或开通会员才能完整播放"
-                : L"需要登录酷狗概念版账号才能播放这首歌";
-            return wstring();       // 不必再降级尝试其它音质，权限都一样
-        }
+        if (!Request(L"/v5/url", ROUTER_TRACKER, params, "", response)) return {};
+        auto playback = online::ParseKugouPlayback(response, account.IsLoggedIn());
+        if (!playback.url.empty()) { m_last_error.clear(); return playback.url; }
+        m_last_error = playback.error;
+        if (!playback.retry_quality) return {};
     }
 
     if (m_last_error.empty())
@@ -417,6 +494,7 @@ wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_aud
 bool CKugouSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
 {
     result = online::Lyric();
+    m_last_error.clear();
 
     wstring prefix = L"kugou://";
     if (virtual_path.compare(0, prefix.size(), prefix) != 0)
@@ -431,41 +509,40 @@ bool CKugouSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
     if (hash.empty())
         return false;
 
-    // 第一步：用 hash 换歌词的 id 和 accesskey
-    char clienttime[32]{};
-    sprintf_s(clienttime, "%lld", static_cast<long long>(time(nullptr)));
-
-    vector<pair<string, string>> params = {
-        { "dfid",       m_device.dfid },
-        { "mid",        m_device.mid },
-        { "uuid",       "-" },
-        { "appid",      LITE_APPID },
-        { "clientver",  LITE_CLIENTVER },
-        { "clienttime", clienttime },
-        { "hash",       ToUtf8(hash) },
-        { "man",        "yes" },
+    // 歌词服务使用独立 /v1/search，并签名其业务参数，不注入网关的账号参数。
+    vector<SignParam> params = {
+        {"album_audio_id", "0"}, {"appid", LITE_APPID}, {"clientver", LITE_CLIENTVER},
+        {"duration", "0"}, {"hash", ToUtf8(hash)}, {"keyword", ""}, {"lrctxt", "1"}, {"man", "no"}
     };
-
+    string query;
+    for (const auto& param : params)
+    {
+        if (!query.empty()) query += '&';
+        query += param.key + "=" + UrlEncode(param.value);
+    }
+    query += "&signature=" + SignatureAndroid(params, "");
+    const wstring headers = L"User-Agent: " + FromUtf8(DEFAULT_USER_AGENT) + L"\r\n";
+    wstring search_text;
+    if (!online::HttpRequest(L"https://lyrics.kugou.com/v1/search?" + FromUtf8(query), "", headers, search_text, m_last_error)) return false;
     json search_result;
-    if (!Request(L"/v1/search/lyric", ROUTER_LYRICS, params, "", search_result))
-        return false;
-
-    if (!search_result.contains("candidates") || search_result["candidates"].empty())
-        return false;
+    try { search_result = json::parse(ToUtf8(search_text)); }
+    catch (const json::exception&) { m_last_error = L"酷狗歌词搜索响应无法解析"; return false; }
+    if (!search_result.contains("candidates") || !search_result["candidates"].is_array() || search_result["candidates"].empty())
+    { m_last_error = L"这首歌曲暂时没有匹配的歌词"; return false; }
 
     const auto& candidate = search_result["candidates"][0];
-    string id = candidate.value("id", "");
-    string accesskey = candidate.value("accesskey", "");
+    string id = online::JsonText(candidate, "id");
+    string accesskey = online::JsonText(candidate, "accesskey");
     if (id.empty() || accesskey.empty())
         return false;
 
     // 第二步：下载歌词。这里要 lrc 格式，krc 需要额外解密，先用能直接用的。
     wstring download_url = wstring(L"https://lyrics.kugou.com/download?id=") +
-        FromUtf8(id) + L"&accesskey=" + FromUtf8(accesskey) +
+        FromUtf8(UrlEncode(id)) + L"&accesskey=" + FromUtf8(UrlEncode(accesskey)) +
         L"&fmt=lrc&charset=utf8&client=android&ver=1";
 
     wstring response_text;
-    if (CInternetCommon::HttpGet(download_url, response_text, L"", false) != CInternetCommon::SUCCESS)
+    if (!online::HttpRequest(download_url, "", headers, response_text, m_last_error))
         return false;
 
     try
@@ -508,9 +585,9 @@ bool CKugouSource::RequestLoginApi(const wstring& url_path,
     params.push_back({ "appid",      LITE_APPID });
     params.push_back({ "clientver",  LITE_CLIENTVER });
     params.push_back({ "clienttime", clienttime });
-    params.push_back({ "userid",     m_account.IsLoggedIn() ? m_account.userid : "0" });
-    if (m_account.IsLoggedIn())
-        params.push_back({ "token", m_account.token });
+    params.push_back({ "userid",     GetAccount().IsLoggedIn() ? GetAccount().userid : "0" });
+    if (GetAccount().IsLoggedIn())
+        params.push_back({ "token", GetAccount().token });
 
     vector<SignParam> sign_params;
     for (const auto& kv : params)
@@ -535,8 +612,7 @@ bool CKugouSource::RequestLoginApi(const wstring& url_path,
     headers += "User-Agent: " + string(DEFAULT_USER_AGENT) + "\r\n";
 
     wstring result;
-    if (CInternetCommon::HttpGet(url, result, FromUtf8(headers), false) != CInternetCommon::SUCCESS
-        || result.empty())
+    if (!online::HttpRequest(url, "", FromUtf8(headers), result, m_last_error))
     {
         m_last_error = L"网络请求失败";
         return false;
@@ -676,11 +752,11 @@ bool CKugouSource::RegisterDevice()
     // 注意 uid 未登录时必须给「数字 0」而不是字符串 "0"，否则服务端会报 rsa failure。
     json key_info;
     key_info["aes"] = aes_key;
-    if (m_account.IsLoggedIn())
-        key_info["uid"] = m_account.userid;
+    if (GetAccount().IsLoggedIn())
+        key_info["uid"] = GetAccount().userid;
     else
         key_info["uid"] = 0;
-    key_info["token"] = m_account.token;
+    key_info["token"] = GetAccount().token;
     string p = RsaEncryptPkcs1(key_info.dump(), LITE_RSA_PUBLIC_KEY);
     if (p.empty())
     {
@@ -690,7 +766,7 @@ bool CKugouSource::RegisterDevice()
 
     char clienttime[32]{};
     sprintf_s(clienttime, "%lld", static_cast<long long>(time(nullptr)));
-    string userid = m_account.IsLoggedIn() ? m_account.userid : "0";
+    string userid = GetAccount().IsLoggedIn() ? GetAccount().userid : "0";
 
     // 这个接口要 Android 签名，而且签名里要带上 AES 密文作为请求体
     vector<SignParam> sign_params = {
@@ -774,7 +850,10 @@ bool CKugouSource::RegisterDevice()
             return false;
         }
 
-        m_device.dfid = dfid;
+        {
+            std::lock_guard<std::mutex> lock(m_state_mutex);
+            m_device.dfid = dfid;
+        }
         return true;
     }
     catch (const json::exception&)
@@ -861,13 +940,15 @@ CKugouSource::QrStatus CKugouSource::CheckQrCode()
         return QrStatus::Scanned;
     case 4:
     {
-        m_account.token = data.value("token", "");
-        m_account.userid = data.value("userid", "");
-        if (m_account.token.empty() || m_account.userid.empty())
+        Account authorized;
+        authorized.token = online::JsonText(data, "token");
+        authorized.userid = online::JsonText(data, "userid");
+        if (authorized.token.empty() || authorized.userid.empty())
         {
             m_last_error = L"登录成功但没拿到账号信息";
             return QrStatus::Failed;
         }
+        SetAccount(authorized);
         m_last_error.clear();
         return QrStatus::Authorized;
     }
@@ -876,9 +957,45 @@ CKugouSource::QrStatus CKugouSource::CheckQrCode()
         return QrStatus::Failed;
     }
 }
+bool CKugouSource::GetProfile(online::AccountProfile& profile)
+{
+    profile = {}; m_last_error.clear();
+    const auto account = GetAccount();
+    if (!account.IsLoggedIn()) { m_last_error = L"请先登录"; return false; }
+    const auto now = time(nullptr);
+    auto encrypted = RsaEncryptRaw(nlohmann::ordered_json{{"token", account.token}, {"clienttime", now}}.dump());
+    transform(encrypted.begin(), encrypted.end(), encrypted.begin(), ::toupper);
+    vector<pair<string, string>> params{{"appid", LITE_APPID}, {"clientver", LITE_CLIENTVER},
+        {"mid", m_device.mid}, {"dfid", m_device.dfid}, {"clienttime", to_string(now)}, {"plat", "1"}};
+    json response;
+    const string body = json{{"visit_time", now}, {"usertype", 1}, {"p", encrypted}, {"userid", stoll(account.userid)}}.dump();
+    if (!encrypted.empty() && Request(L"/v3/get_my_info", L"usercenter.kugou.com", params, body, response)
+        && online::JsonNumber(response, "status") == 1 && response.contains("data"))
+        profile.name = FromUtf8(online::JsonText(response["data"], "nickname"));
+    params.pop_back(); params.push_back({"busi_type", "concept"});
+    if (Request(L"/v1/get_union_vip", L"", params, "", response, true, L"GET", L"https://kugouvip.kugou.com")
+        && online::JsonNumber(response, "status") == 1 && response.contains("data"))
+        online::ReadKugouMembership(response["data"], profile);
+    if (profile.name.empty() && profile.membership.empty()) { m_last_error = L"账号信息读取失败"; return false; }
+    return true;
+}
+
+wstring CKugouSource::GetCoverUrl(const online::Track& track)
+{
+    if (!track.cover_url.empty()) return track.cover_url;
+    if (track.title.empty()) return {};
+    vector<online::Track> tracks;
+    auto hash = [](const wstring& path) { auto value = path.substr(0, path.find(L'?')); transform(value.begin(), value.end(), value.begin(), towlower); return value; };
+    for (const auto& query : {track.artist + L" " + track.title, track.title})
+        if (Search(query, 1, tracks))
+            for (const auto& item : tracks)
+                if (hash(item.virtual_path) == hash(track.virtual_path) && !item.cover_url.empty()) return item.cover_url;
+    return {};
+}
+
 void CKugouSource::Logout()
 {
-    m_account = Account();
+    SetAccount(Account());
     m_qr_key.clear();
 }
 

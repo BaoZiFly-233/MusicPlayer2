@@ -3,6 +3,7 @@
 //
 
 #include "stdafx.h"
+#include "OnlineSettings.h"
 #include "MusicPlayer2.h"
 #include "WinVersionHelper.h"
 #include "MusicPlayerDlg.h"
@@ -17,9 +18,13 @@
 #include "QQMusicLyricDownload.h"
 #include "OnlineSource.h"
 #include "KugouSource.h"
+#include "BodianSource.h"
+#include "OnlineMediaCache.h"
 #include "KugouCrypto.h"
 #include "Player.h"
 #include "SongInfo.h"
+#include "OnlineMusicTests.h"
+#include "OnlineMusicPreview.h"
 #include <sstream>
 
 #ifdef _DEBUG
@@ -104,6 +109,7 @@ BOOL CMusicPlayerApp::InitInstance()
         m_config_dir = m_appdata_dir;
 
     m_config_path = m_config_dir + L"config.ini";
+    online::COnlineSettings::Instance().Configure(m_config_dir);
     m_song_data_path = m_config_dir + L"song_data.dat";
     m_recent_list_dat_path = m_config_dir + L"recent_list.dat";
     // 以下三项不再使用，但路径留作旧版兼容，新程序不再创建这三个文件
@@ -125,6 +131,18 @@ BOOL CMusicPlayerApp::InitInstance()
         online::IOnlineSource* kugou_source = online::CSourceRegistry::Instance().FindByScheme(L"kugou");
         if (kugou_source != nullptr)
             static_cast<kugou::CKugouSource*>(kugou_source)->LoadIdentity(m_config_dir);
+        if (auto* bodian_source = dynamic_cast<bodian::CBodianSource*>(online::CSourceRegistry::Instance().FindByScheme(L"bodian")))
+            bodian_source->LoadIdentity(m_config_dir);
+    }
+
+    if (wstring(m_lpCmdLine).find(L"--test-online") != wstring::npos)
+    {
+        m_test_exit_code = RunOnlineMusicTests(m_config_dir + L"online_test.log", wstring(m_lpCmdLine).find(L"--network") != wstring::npos) ? 0 : 1;
+        if (wstring(m_lpCmdLine).find(L"--playback") != wstring::npos
+            && !RunOnlinePlaybackTest(m_config_dir + L"online_playback_test.log", m_playlist_dir + L"temp.playlist", m_local_dir)) m_test_exit_code = 1;
+        if (wstring(m_lpCmdLine).find(L"--media-cache") != wstring::npos
+            && !RunOnlineMediaIntegrationTest(m_config_dir + L"online_media_test.log", m_playlist_dir + L"temp.playlist", m_local_dir)) m_test_exit_code = 1;
+        return FALSE;
     }
 
     // 命令行自检：MusicPlayer2.exe --test-source
@@ -443,6 +461,13 @@ BOOL CMusicPlayerApp::InitInstance()
     m_accelerator_res.Init();
     m_chinese_pingyin_res.Init();
 
+    if (cmd_line.find(L"--render-online-preview") != wstring::npos)
+    {
+        m_test_exit_code = COnlineMusicPreview::Run(m_config_dir + L"ui-preview\\") ? 0 : 1;
+        return FALSE;
+    }
+
+    online::COnlineMediaCache::Instance().Configure(m_config_dir);
     CMusicPlayerDlg dlg(cmd_line);
     //CMusicPlayerDlg dlg(L"\"D:\\音乐\\纯音乐\\班得瑞\\05. Chariots Of Fire 火战车.mp3\"");
     m_pMainWnd = &dlg;
@@ -914,7 +939,8 @@ int CMusicPlayerApp::ExitInstance()
     // 释放ITaskbarList3
     ReleaseTaskBarRefs();
 
-    return CWinApp::ExitInstance();
+    int result = CWinApp::ExitInstance();
+    return m_test_exit_code >= 0 ? m_test_exit_code : result;
 }
 
 

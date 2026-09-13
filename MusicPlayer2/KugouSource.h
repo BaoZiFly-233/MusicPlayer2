@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <mutex>
 #include "OnlineSource.h"
 #include "nlohmann/json.hpp"
 
@@ -11,7 +12,7 @@
 //   * 概念版的 appid/clientver/salt 与标准版完全不同，token 也不通用
 //   * 设备身份（guid/mid/dfid）必须固定并持久化。每次都换会被当成新设备，
 //     登录设备列表会越来越长，也更容易触发风控
-//   * 播放地址是明文 http 链接，但有有效期，所以不缓存，每次播放前重新取
+//   * 播放地址有有效期；完整音频可由媒体缓存复用，地址本身不持久化
 //   * 匿名状态下接口会返回「需要购买」，这是权限限制而不是签名错误。
 //     想正常听歌需要登录概念版账号
 namespace kugou
@@ -38,19 +39,21 @@ struct Account
     std::string vip_type;
     std::string vip_token;
 
-    bool IsLoggedIn() const { return !token.empty() && userid != "0"; }
+    bool IsLoggedIn() const { return !token.empty() && !userid.empty() && userid != "0"; }
 };
 
 class CKugouSource : public online::IOnlineSource
 {
 public:
     CKugouSource();
+    CKugouSource(const CKugouSource& source);
     ~CKugouSource() override;
 
     // ---- IOnlineSource ----
     std::wstring GetScheme() const override { return L"kugou"; }
     std::wstring GetDisplayName() const override { return L"酷狗概念版"; }
     bool Search(const std::wstring& keyword, int page, std::vector<online::Track>& result) override;
+    bool Browse(const online::BrowseRequest& request, online::BrowseResult& result) override;
     std::wstring ResolvePlayUrl(const std::wstring& virtual_path) override;
     bool GetLyric(const std::wstring& virtual_path, online::Lyric& result) override;
 
@@ -65,8 +68,9 @@ public:
     bool RegisterDevice();
 
     const DeviceIdentity& GetIdentity() const { return m_device; }
-    const Account& GetAccount() const { return m_account; }
-    bool IsLoggedIn() const { return m_account.IsLoggedIn(); }
+    Account GetAccount() const { std::lock_guard<std::mutex> lock(m_state_mutex); return m_account; }
+    void SetAccount(const Account& account) { std::lock_guard<std::mutex> lock(m_state_mutex); m_account = account; }
+    bool IsLoggedIn() const { return GetAccount().IsLoggedIn(); }
 
     // 上一次解析失败的原因，可直接显示给用户
     std::wstring GetLastError() const override { return m_last_error; }
@@ -74,14 +78,7 @@ public:
     // ---- 扫码登录 ----
     // 登录流程：GetQrCode 拿二维码内容 -> 用户用酷狗App扫 -> 反复 CheckQrCode
     // 直到返回已授权，此时账号信息会写进 m_account。
-    enum class QrStatus
-    {
-        Expired,        // 二维码过期，需要重新获取
-        Waiting,        // 等待扫码
-        Scanned,        // 已扫码，等待用户在手机上确认
-        Authorized,     // 授权成功，已拿到 token
-        Failed,         // 出错
-    };
+    using QrStatus = online::QrStatus;
 
     // 获取登录二维码，返回给用户去扫的内容（一个网址）
     bool GetQrCode(std::wstring& qr_content);
@@ -91,13 +88,17 @@ public:
 
     // 退出登录（清掉内存里的账号信息，调用方负责保存）
     void Logout();
+    bool GetDailyRewardRecord(std::wstring& day, bool& received);
+    bool ClaimDailyReward(const std::wstring& day);
+    bool GetProfile(online::AccountProfile& profile) override;
+    std::wstring GetCoverUrl(const online::Track& track) override;
 
 protected:
     // 向接口发一个带概念版公共参数和签名的请求。
     // url_path 形如 L"/v3/search/song"；router 用于设置 x-router 头。
     bool Request(const std::wstring& url_path, const std::wstring& router,
         const std::vector<std::pair<std::string, std::string>>& extra_params,
-        const std::string& body, nlohmann::json& out_json, bool need_sign = true);
+        const std::string& body, nlohmann::json& out_json, bool need_sign = true, const wchar_t* method = nullptr, const wchar_t* base_url = nullptr);
 
     // 登录接口在另一个域名上，用 Web 签名且不带公共参数，所以单独一个函数。
     // 会往 params 里补公共参数，所以传入的是可修改的引用
@@ -110,6 +111,7 @@ protected:
 
     DeviceIdentity m_device;
     Account m_account;
+    mutable std::mutex m_state_mutex;
     std::wstring m_last_error;      // 最近一次失败原因
     std::wstring m_qr_key;          // 当前登录二维码的 key
 };

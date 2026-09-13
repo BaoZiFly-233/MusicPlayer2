@@ -147,8 +147,8 @@ bool UiElement::NavigationBar::LButtonUp(CPoint point)
     pressed = false;
     if (pressed_tmp && rect.PtInRect(point))
     {
-        FindStackElement();
-        if (stack_element != nullptr)
+        if (!m_selection_trigger) FindStackElement();
+        if (stack_element != nullptr || m_selection_trigger)
         {
             //查找点击的标签
             int _selected_index = -1;
@@ -163,6 +163,7 @@ bool UiElement::NavigationBar::LButtonUp(CPoint point)
             if (_selected_index >= 0)
             {
                 selected_index = _selected_index;
+                if (m_selection_trigger) { m_selection_trigger(selected_index); return true; }
                 stack_element->SetCurrentElement(selected_index);
                 //点击导航栏标签时，如果导航栏在面板中但是关联的stackElement在面板外，则关闭面板
                 if (CheckNavigationBarInPanel())
@@ -241,6 +242,7 @@ void UiElement::NavigationBar::HideTooltip()
 
 int UiElement::NavigationBar::SelectedIndex()
 {
+    if (m_selection_trigger) return selected_index;
     FindStackElement();
     if (stack_element != nullptr)
         return stack_element->GetCurIndex();
@@ -382,6 +384,11 @@ void UiElement::NavigationBar::FromXmlNode(tinyxml2::XMLElement* xml_node)
         {
             navigation_item.icon = IconMgr::IT_Media_Lib;
             navigation_item.text = theApp.m_str_table.LoadText(L"TXT_MEDIA_LIB");
+        }
+        else if (item_str == "online_music")
+        {
+            navigation_item.icon = IconMgr::IT_Online;
+            navigation_item.text = L"在线音乐";
         }
         else if (item_str == "my_favourite")
         {

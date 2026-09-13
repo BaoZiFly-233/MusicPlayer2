@@ -1096,12 +1096,21 @@
 #define IDC_KUGOU_LOGIN_STATUS_STATIC   1395
 #define IDC_KUGOU_REFRESH_BUTTON        1396
 // 在线音乐搜索相关
-#define IDD_ONLINE_MUSIC_DIALOG         695
-#define IDC_ONLINE_KEYWORD_EDIT         1390
-#define IDC_ONLINE_SEARCH_BUTTON        1391
-#define IDC_ONLINE_SOURCE_COMBO         1392
-#define IDC_ONLINE_RESULT_LIST          1393
 #define ID_ONLINE_MUSIC                 33520
+#define ID_DOWNLOAD_CURRENT             33521
+#define IDD_ONLINE_SETTINGS_DIALOG      697
+#define IDD_ONLINE_DOWNLOAD_SETUP       698
+#define IDC_ONLINE_DOWNLOAD_DIR         1400
+#define IDC_ONLINE_BROWSE               1401
+#define IDC_ONLINE_NAME_ORDER           1402
+#define IDC_ONLINE_PLAYLIST_FOLDER      1403
+#define IDC_ONLINE_NAME_EXAMPLE         1404
+#define IDC_ONLINE_AUTO_LYRIC           1405
+#define IDC_ONLINE_AUTO_COVER           1406
+#define IDC_ONLINE_PREFETCH             1407
+#define IDC_ONLINE_DAILY                1408
+#define IDC_ONLINE_CLEAR_CACHE          1409
+#define IDC_ONLINE_OPEN_DOWNLOADS       1410
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED

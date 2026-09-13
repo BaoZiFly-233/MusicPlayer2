@@ -15,6 +15,7 @@ public:
         wstring translate;      // 歌词的翻译
         vector<int> split;      // 逐字歌词对text的分割位置
         vector<int> word_time;  // 分割后各字持续时间（毫秒），未经Normalize仅限GetLyricProgress使用，其他位置不应使用防止出现意料之外的行为
+        bool HasWordTiming() const { return !split.empty() && !word_time.empty(); }
 
         // 重载小于号运算符，用于对歌词按时间标签排序
         bool operator<(const Lyric& lyric) const

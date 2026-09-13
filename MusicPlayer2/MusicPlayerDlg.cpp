@@ -3,6 +3,7 @@
 //
 
 #include "stdafx.h"
+#include "OnlineSettingsUI.h"
 #include "MusicPlayer2.h"
 #include "MusicPlayerDlg.h"
 #include "SupportedFormatDlg.h"
@@ -31,7 +32,8 @@
 #include "MoreRecentItemDlg.h"
 #include "UiMediaLibItemMgr.h"
 #include "OnlineSource.h"
-#include "OnlineMusicDlg.h"
+#include "OnlineMusicModel.h"
+#include "OnlineMediaCache.h"
 #include "KugouSource.h"
 #include "KugouLoginDlg.h"
 #include "KugouCrypto.h"
@@ -370,17 +372,34 @@ END_MESSAGE_MAP()
 
 
 
-// 播放在线音乐搜索里双击选中的曲目。
-// 用消息而不是直接调用，是为了等搜索对话框彻底销毁后再动播放列表。
+// 原生皮肤只投递命令；网络、文件对话框与播放队列的更新统一在窗口线程执行。
 LRESULT CMusicPlayerDlg::OnPlayOnlineSong(WPARAM wParam, LPARAM lParam)
 {
-    if (m_has_online_song)
+    auto& online = COnlineMusicModel::Instance();
+    online.ProcessCommands();
+    COnlineMusicModel::Playback playback;
+    while (online.TakePlayback(playback))
     {
-        m_has_online_song = false;
-        vector<SongInfo> songs{ m_online_song };
-        CPlayer::GetInstance().OpenSongsInTempPlaylist(songs, 0, true);
+        int result = CPlayer::GetInstance().OpenOnlineSongs(playback.songs, playback.append);
+        if (result == -1) online.SetStatus(L"播放队列正在更新，请稍后重试。");
+        else if (result < 0) online.SetStatus(L"无法保存播放队列，原列表已保留。");
+        else online.SetStatus(playback.append ? L"已加入播放队列：" + std::to_wstring(result) + L" 首。" : L"正在获取歌曲并播放，可继续浏览。");
     }
+    UiForceRefresh();
     return 0;
+}
+
+void CMusicPlayerDlg::ToggleOnlinePage()
+{
+    auto* skin = dynamic_cast<CUserUi*>(m_pUI);
+    if (!skin || !skin->ToggleOnlineMusic())
+    {
+        MessageBox(L"请先拉高播放器窗口，并收起右侧播放列表。在线页面支持默认界面 1、2 和 Groove Music 界面。", L"在线音乐", MB_ICONINFORMATION);
+        return;
+    }
+    if (skin->IsOnlineMusicVisible()) COnlineMusicModel::Instance().Post({COnlineMusicModel::Action::Activate});
+    else COnlineMusicModel::Instance().Suspend();
+    DrawInfo(true); UiForceRefresh();
 }
 
 
@@ -2378,6 +2397,8 @@ BOOL CMusicPlayerDlg::OnInitDialog()
     //SetTimer(TIMER_ID, theApp.m_app_setting_data.ui_refresh_interval, NULL);
     SetTimer(TIMER_ID, TIMER_ELAPSE, NULL);
     SetTimer(TIMER_1_SEC, 1000, NULL);
+    COnlineMusicModel::Instance().Initialize(this);
+    SetTimer(0x5B22, 100, nullptr);
 
 
     return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
@@ -2516,6 +2537,36 @@ void CMusicPlayerDlg::OnSize(UINT nType, int cx, int cy)
 
 void CMusicPlayerDlg::OnTimer(UINT_PTR nIDEvent)
 {
+    if (nIDEvent == 0x5B22)
+    {
+        auto* skin = dynamic_cast<CUserUi*>(m_pUI);
+        COnlineMusicModel::Instance().Poll(skin && skin->IsOnlineMusicVisible() && IsWindowVisible());
+        auto& player = CPlayer::GetInstance();
+        std::unique_lock<std::timed_mutex> playback_lock(player.GetPlayStatusMutex(), std::try_to_lock);
+        if (playback_lock.owns_lock())
+        {
+            const bool online_error = online::CSourceRegistry::IsVirtualPath(player.GetCurrentFilePath()) && player.IsError();
+            COnlineMusicModel::Instance().SetPlaybackError(online_error ? player.GetErrorInfo() : L"");
+            if (player.IsPlaying()) player.PrepareNextTrack();
+            const auto next = !player.IsPlaylistEmpty() && player.IsPlaying() && player.GetRepeatMode() != RM_PLAY_TRACK
+                ? player.GetNextTrack().file_path : L"";
+            online::COnlineMediaCache::Instance().PrefetchNext(
+                next != player.GetCurrentFilePath() && online::CSourceRegistry::IsVirtualPath(next) ? next : L"");
+            if (online::CSourceRegistry::IsVirtualPath(player.GetCurrentFilePath()) && player.m_Lyrics.IsEmpty())
+            {
+                auto lyric = online::COnlineMediaCache::Instance().FindLyric(player.GetCurrentFilePath());
+                if (!lyric.empty() && lyric != player.GetCurrentSongInfo().lyric_file)
+                { player.IniLyrics(lyric); m_desktop_lyric.ClearLyric(); }
+            }
+            if (online::CSourceRegistry::IsVirtualPath(player.GetCurrentFilePath()) && !player.AlbumCoverExist())
+            {
+                const auto cover = online::COnlineMediaCache::Instance().FindCover(player.GetCurrentFilePath());
+                if (!cover.empty() && player.LoadOnlineCover(player.GetCurrentFilePath(), cover))
+                { player.AlbumCoverGaussBlur(); PostMessage(WM_CURRENT_FILE_ALBUM_COVER_CHANGED); }
+            }
+        }
+        return;
+    }
     // TODO: 在此添加消息处理程序代码和/或调用默认值
 
     static std::atomic<bool> cmd_open_files_disable{ true };    // 用于阻止TIMER_CMD_OPEN_FILES_DELAY重入以及在避免在CPlayer::Create之前触发
@@ -3017,6 +3068,12 @@ void CMusicPlayerDlg::OnExplorePath()
 
 BOOL CMusicPlayerDlg::PreTranslateMessage(MSG* pMsg)
 {
+    if (pMsg->message == WM_KEYDOWN && pMsg->hwnd == m_hWnd)
+    {
+        auto* skin = dynamic_cast<CUserUi*>(m_pUI);
+        if (skin && skin->HandleOnlineKey(static_cast<UINT>(pMsg->wParam), (::GetKeyState(VK_CONTROL) & 0x8000) != 0))
+        { UiForceRefresh(); return TRUE; }
+    }
     // TODO: 在此添加专用代码和/或调用基类
     CWnd* search_box;
     if (IsFloatPlaylistExist())
@@ -3089,6 +3146,8 @@ BOOL CMusicPlayerDlg::PreTranslateMessage(MSG* pMsg)
 
 void CMusicPlayerDlg::OnDestroy()
 {
+    KillTimer(0x5B22);
+    COnlineMusicModel::Instance().Shutdown();
     CMainDialogBase::OnDestroy();
 
     // TODO: 在此处添加消息处理程序代码
@@ -3516,30 +3575,22 @@ BOOL CMusicPlayerDlg::OnCommand(WPARAM wParam, LPARAM lParam)
         //CPlayer::GetInstance().DoABRepeat();
         break;
     case ID_ONLINE_MUSIC:
+        ToggleOnlinePage();
+        break;
+    case ID_DOWNLOAD_CURRENT:
     {
-        // 在线音乐搜索。双击结果后对话框会以 IDOK 关闭。
-        // 这里不立刻播放：对话框的模态循环还没完全退出，此时去改主窗口的播放列表
-        // 会让通用控件状态错乱（实测崩在 comctl32）。改成先把曲目存下来，
-        // 再投递一条消息，等对话框彻底销毁后再播放。
-        // 若还没登录酷狗，先给一次登录机会（可以取消）。
-        // 登录后才能拿到歌曲的完整播放地址，否则只能试听。
-        online::IOnlineSource* kg_src = online::CSourceRegistry::Instance().FindByScheme(L"kugou");
-        kugou::CKugouSource* kg = dynamic_cast<kugou::CKugouSource*>(kg_src);
-        if (kg != nullptr && !kg->IsLoggedIn())
+        SongInfo song;
         {
-            CKugouLoginDlg login_dlg;
-            login_dlg.DoModal();
-            if (login_dlg.IsLoginSucceeded())
-                kg->SaveIdentity(theApp.m_config_dir);
+            auto& player = CPlayer::GetInstance();
+            std::unique_lock<std::timed_mutex> lock(player.GetPlayStatusMutex(), std::try_to_lock);
+            if (!lock.owns_lock()) break;
+            song = player.GetSafeCurrentSongInfo();
         }
-
-        COnlineMusicDlg dlg;
-        if (dlg.DoModal() == IDOK && dlg.HasSelection())
-        {
-            m_online_song = dlg.GetSelectedSong();
-            m_has_online_song = true;
-            PostMessage(WM_PLAY_ONLINE_SONG, 0, 0);
-        }
+        if (!online::CSourceRegistry::IsVirtualPath(song.file_path)) break;
+        std::wstring directory;
+        if (!GetOnlineDownloadDirectory(this, directory)) break;
+        online::Track track; track.virtual_path = song.file_path; track.title = song.GetTitle(); track.artist = song.GetArtist(); track.album = song.GetAlbum();
+        online::COnlineMediaCache::Instance().SaveAudio(track, directory);
         break;
     }
     case ID_TEST_DIALOG:
@@ -4453,6 +4504,7 @@ UINT CMusicPlayerDlg::DownloadLyricAndCoverThreadFunc(LPVOID lpParam)
     bool is_osu{ CPlayer::GetInstance().IsOsuFile() };
     // 获取媒体库项目后所有操作基于song_info_ori进行
     SongInfo song_info_ori{ CSongDataManager::GetInstance().GetSongInfo3(CPlayer::GetInstance().GetCurrentSongInfo()) };
+    if (online::CSourceRegistry::IsVirtualPath(song_info_ori.file_path)) return 0;
     CFilePathHelper song_info_ori_path{ song_info_ori.file_path };
     if (theApp.m_general_setting_data.auto_download_only_tag_full)      //设置了“仅当歌曲信息完整进才自动下载”时，如果歌曲标题和艺术家有一个为空，则不自动下载
     {
@@ -4527,8 +4579,12 @@ UINT CMusicPlayerDlg::DownloadLyricAndCoverThreadFunc(LPVOID lpParam)
             SetFileAttributes(cover_file_path.GetFilePath().c_str(), FILE_ATTRIBUTE_HIDDEN);
 
         //重新从本地获取专辑封面
-        CPlayer::GetInstance().SearchOutAlbumCover();
-        ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_ALBUM_COVER_DOWNLOAD_COMPLETE, 0, 0);
+        std::unique_lock<std::timed_mutex> playback_lock(CPlayer::GetInstance().GetPlayStatusMutex());
+        if (SongKey(song_info_ori) == CPlayer::GetInstance().GetCurrentSongInfo())
+        {
+            CPlayer::GetInstance().SearchOutAlbumCover();
+            ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_ALBUM_COVER_DOWNLOAD_COMPLETE, 0, 0);
+        }
     }
     //自动下载歌词
     if (download_lyric)
@@ -4581,7 +4637,9 @@ UINT CMusicPlayerDlg::DownloadLyricAndCoverThreadFunc(LPVOID lpParam)
         CLyrics lyrics{ lyric_path.GetFilePath(), lyric_type };     // 打开网易云半json的原始歌词
         lyrics.SaveLyric2(theApp.m_general_setting_data.download_lyric_text_and_translation_in_same_line);                                                                // 保存为lrc格式
 
-        CPlayer::GetInstance().IniLyrics(lyric_path.GetFilePath());
+        std::unique_lock<std::timed_mutex> playback_lock(CPlayer::GetInstance().GetPlayStatusMutex());
+        if (SongKey(song_info_ori) == CPlayer::GetInstance().GetCurrentSongInfo())
+            CPlayer::GetInstance().IniLyrics(lyric_path.GetFilePath());
     }
     return 0;
 }
@@ -4802,7 +4860,17 @@ afx_msg LRESULT CMusicPlayerDlg::OnMusicStreamOpened(WPARAM wParam, LPARAM lPara
     //专辑封面高斯模糊处理（放到这里是为了避免此函数在工作线程中被调用，在工作线程中，拉伸图片的处理CDrawCommon::BitmapStretch有一定的概率出错，原因未知）
     CPlayer::GetInstance().AlbumCoverGaussBlur();
     //自动下载专辑封面
-    m_pDownloadThread = AfxBeginThread(DownloadLyricAndCoverThreadFunc, this);
+    const auto current_path = CPlayer::GetInstance().GetCurrentFilePath();
+    if (online::CSourceRegistry::IsVirtualPath(current_path))
+    {
+        const auto settings = online::COnlineSettings::Instance().Get();
+        if (settings.auto_lyrics) online::COnlineMediaCache::Instance().QueueLyric(current_path);
+        const auto& song = CPlayer::GetInstance().GetSafeCurrentSongInfo();
+        online::Track track; track.virtual_path = current_path; track.title = song.GetTitle(); track.artist = song.GetArtist(); track.album = song.GetAlbum();
+        if (settings.auto_cover) online::COnlineMediaCache::Instance().QueueCover(track);
+    }
+    else
+        m_pDownloadThread = AfxBeginThread(DownloadLyricAndCoverThreadFunc, this);
 
     m_desktop_lyric.ClearLyric();
 
