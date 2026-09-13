@@ -16,6 +16,7 @@ namespace UiElement
         int GetColumnWidth(int col, int total_width) override;
         bool IsMultipleSelectionEnable() override { return true; }
         bool IsHighlightRow(int row) override;
+        bool IsItemEnabled(int row) override;   // 播放失败过的曲目显示为灰色
         std::wstring GetEmptyString() override;
         int GetColumnScrollTextWhenSelected() override { return 1; }
         void OnDoubleClicked() override;

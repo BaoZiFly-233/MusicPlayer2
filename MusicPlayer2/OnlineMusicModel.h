@@ -7,6 +7,7 @@
 #include <memory>
 #include <mutex>
 #include <map>
+#include <set>
 
 // 在线浏览的数据与任务。窗口线程更新状态，皮肤绘制线程只读取不可变快照。
 class COnlineMusicModel
@@ -27,6 +28,7 @@ public:
         online::BrowseRequest request;
         std::vector<online::BrowseItem> items;
         std::vector<SongInfo> songs; // 与 items 下标一致，非歌曲行保持空值
+        std::vector<bool> unplayable; // 与 items 下标一致，true 表示播放失败过（列表里显示灰色）
         std::wstring query, status{ L"在线音乐" }, detail, playback_error;
         std::vector<bool> qr_pixels;
         int qr_size{};
@@ -51,6 +53,8 @@ public:
     bool TakePlayback(Playback& playback);
     void SetStatus(const std::wstring& status);
     void SetPlaybackError(const std::wstring& error);
+    // 播放失败时调用，把该曲目标记为不可播放（列表里显示灰色）。只在本次运行内有效。
+    void MarkUnplayable(const std::wstring& path);
     static const wchar_t* PageName(Page page);
 
 private:
@@ -105,6 +109,7 @@ private:
     bool m_cache_view{};
     std::wstring m_reward_status;
     std::map<int, online::AccountProfile> m_profiles;
+    std::set<std::wstring> m_unplayable;   // 播放失败过的虚拟路径
     std::mutex m_commands_mutex;
     std::deque<Command> m_commands;
     std::deque<Playback> m_playback;

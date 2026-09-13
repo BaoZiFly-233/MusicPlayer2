@@ -55,6 +55,7 @@ void COnlineMusicModel::Publish(bool rows_changed, bool reset_selection)
                 song.end_pos.fromInt(item.track.duration_ms);
             }
             m_state.songs.push_back(std::move(song));
+            m_state.unplayable.push_back(!song.file_path.empty() && m_unplayable.count(song.file_path) != 0);
         }
     }
     m_snapshot.store(make_shared<State>(m_state));
@@ -84,6 +85,13 @@ void COnlineMusicModel::SetPlaybackError(const wstring& error)
 {
     if (m_state.playback_error == error) return;
     m_state.playback_error = error; Publish();
+}
+void COnlineMusicModel::MarkUnplayable(const wstring& path)
+{
+    // 只记在线曲目，且只记一次；重画列表但保留用户当前选中行
+    if (path.empty() || !CSourceRegistry::IsVirtualPath(path)) return;
+    if (!m_unplayable.insert(path).second) return;
+    Publish(true, false);
 }
 void COnlineMusicModel::CancelRequest() { if (m_task) m_task->cancelled = true; m_task.reset(); }
 void COnlineMusicModel::ResetLogin()

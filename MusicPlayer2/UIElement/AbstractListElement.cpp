@@ -240,10 +240,12 @@ void UiElement::AbstractListElement::DrawScrollArea()
                     if (!draw_mini_spectrum || j > 0)//如果第1列绘制了迷你频谱，则不再绘制文本
                     {
                         DrawAreaGuard guard(&ui->GetDrawer(), clip_rect & rect_text);
+                          //不可用的行用灰色文字（默认所有行都可用，见 IsItemEnabled）
+                          const COLORREF item_text_color = IsItemEnabled(i) ? ui->GetUIColors().color_text : ui->GetUIColors().color_text_disabled;
                         if (!IsMultipleSelected() && i == GetItemSelected() && j == GetColumnScrollTextWhenSelected())
-                            ui->GetDrawer().DrawScrollText(rect_text, display_name.c_str(), ui->GetUIColors().color_text, ui->GetScrollTextPixel(), false, selected_item_scroll_info, false, true);
+                            ui->GetDrawer().DrawScrollText(rect_text, display_name.c_str(), item_text_color, ui->GetScrollTextPixel(), false, selected_item_scroll_info, false, true);
                         else
-                            ui->GetDrawer().DrawWindowText(rect_text, display_name.c_str(), ui->GetUIColors().color_text, Alignment::LEFT, true);
+                            ui->GetDrawer().DrawWindowText(rect_text, display_name.c_str(), item_text_color, Alignment::LEFT, true);
                     }
                     col_x = rect_cell.right;
                 }
