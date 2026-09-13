@@ -4,6 +4,7 @@
 #include "OnlineMusicModel.h"
 #include "OnlineMediaCache.h"
 #include "OnlinePlaylistImport.h"
+#include "KugouKrc.h"
 #include "BodianSource.h"
 #include "KugouSource.h"
 #include "bass.h"
@@ -208,6 +209,29 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
                     {
                         auto track = result.items.front().track; track.cover_url.clear();
                         check(!source->GetCoverUrl(track).empty(), "live cover lookup for saved track metadata");
+                        // 酷狗歌词：现在优先取带逐字时间轴的版本，验证解密和格式转换能走通
+                        if (source->GetScheme() == L"kugou")
+                        {
+                            online::Lyric lyric;
+                            const bool got_lyric = source->GetLyric(track.virtual_path, lyric);
+                            log << "kugou lyric chars=" << lyric.content.size()
+                                << " error=" << kugou::ToUtf8(source->GetLastError()) << "\n";
+                            check(got_lyric, "live kugou lyric lookup");
+                            if (got_lyric)
+                            {
+                                CLyrics parsed;
+                                parsed.LyricsFromRowString(lyric.content);
+                                bool word_timing = false;
+                                for (int li = 0; li < 40; ++li)
+                                {
+                                    const auto line = parsed.GetLyric(li);
+                                    if (line.text.empty()) break;
+                                    if (line.HasWordTiming()) { word_timing = true; break; }
+                                }
+                                log << "kugou lyric word_timing=" << word_timing << "\n";
+                                check(word_timing, "live kugou lyric carries word timing");
+                            }
+                        }
                     }
                     if (ok && kind == online::BrowseKind::Charts && !result.items.empty())
                     {
@@ -286,6 +310,42 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
     }
     for (const auto& path : files) DeleteFileW(path.c_str());
     RemoveDirectoryW(temp_name);
+    // ---- 酷狗 KRC 逐字歌词：格式转换（离线）----
+    {
+        // KRC 是「[行起始,行时长]<字相对起始,字时长,0>字…」，要转成播放器能识别的
+        // 扩展歌词格式「[行绝对时间]<字绝对时间>字」。
+        // 这里用 ASCII 歌词：MSVC 会把窄字符串字面量转成系统 ANSI 编码，
+        // 用中文的话测试数据的编码会和运行时的 UTF-8 数据不一致。
+        const std::string sample =
+            "[ti:Title]\n[ar:Artist]\n[offset:0]\n"
+            "[0,1000]<0,300,0>AB<300,300,0>CD\n"
+            "[1000,1500]<0,500,0>EF<500,500,0>GH<1000,500,0>\n";
+        const std::wstring converted = kugou::KrcToExtendedLyric(sample);
+        check(!converted.empty(), "krc converts to extended lyric");
+        check(converted.find(L"[00:00.000]<00:00.000>AB<00:00.300>CD") != std::wstring::npos,
+            "krc word times are absolute from line start");
+        // 第二行的字时间要加上行起始 1000ms
+        check(converted.find(L"[00:01.000]<00:01.000>EF<00:01.500>GH<00:02.000>") != std::wstring::npos,
+            "krc second line offsets by line start");
+        // 元数据行不该被当成歌词
+        check(converted.find(L"ti:") == std::wstring::npos, "krc metadata lines skipped");
+        // 转换结果要能被播放器自己的歌词解析器认出来，并且识别为逐字
+        {
+            CLyrics parsed;
+            parsed.LyricsFromRowString(converted);
+            const auto first_line = parsed.GetLyric(0);
+            const auto second_line = parsed.GetLyric(1);
+            const auto past_end = parsed.GetLyric(2);
+            check(first_line.text == L"ABCD" && second_line.text == L"EFGH" && past_end.text.empty(),
+                "krc converted lyric parses as two lines");
+            check(first_line.HasWordTiming() && second_line.HasWordTiming(),
+                "krc converted lyric carries word timing");
+        }
+        // 不是 KRC 的输入要返回空，好让调用方退回普通歌词
+        check(kugou::KrcToExtendedLyric("not a lyric").empty(), "non krc input rejected");
+        check(kugou::KrcToExtendedLyric("").empty(), "empty krc input rejected");
+        check(kugou::DecryptKrc("").empty(), "empty krc decrypt rejected");
+    }
     // ---- 歌单跨平台导入：解析与匹配（纯离线，不联网）----
     {
         using namespace online;
