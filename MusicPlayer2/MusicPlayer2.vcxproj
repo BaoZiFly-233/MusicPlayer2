@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
@@ -304,7 +304,8 @@
     <ClInclude Include="NeteaseLyricDownload.h" />
     <ClInclude Include="OnlineMusicModel.h" />
     <ClInclude Include="UIElement\OnlineMusic.h" />
-    <ClInclude Include="OnlineSource.h" />
+        <ClInclude Include="OnlinePlaylistImport.h" />
+<ClInclude Include="OnlineSource.h" />
     <ClInclude Include="OnlineMediaCache.h" />
     <ClInclude Include="OnlineSettings.h" />
     <ClInclude Include="OnlineSettingsUI.h" />
@@ -568,7 +569,8 @@
     <ClCompile Include="NeteaseLyricDownload.cpp" />
     <ClCompile Include="OnlineMusicModel.cpp" />
     <ClCompile Include="UIElement\OnlineMusic.cpp" />
-    <ClCompile Include="OnlineSource.cpp" />
+        <ClCompile Include="OnlinePlaylistImport.cpp" />
+<ClCompile Include="OnlineSource.cpp" />
     <ClCompile Include="OnlineMediaCache.cpp" />
     <ClCompile Include="OnlineSettings.cpp" />
     <ClCompile Include="OnlineSettingsUI.cpp" />
