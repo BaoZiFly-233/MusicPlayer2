@@ -23,6 +23,17 @@ public:
 
     bool OnAddToPlaylistCommand(std::function<void(std::vector<SongInfo>&)> get_song_list, DWORD command);
 
+    //把播放列表的显示名还原成实际路径。显示名可能带分组（「语种 / 歌单名」），
+    //所以不能再用 playlist 目录直接拼字符串。找不到返回空。
+    static std::wstring ResolvePlaylistPath(const std::wstring& display_name);
+
+    // 在皮肤上打一条短提示（在线页的状态栏在别的页面看不见，换源这类动作靠它做即时反馈）
+    void ShowTip(const std::wstring& text);
+
+    //把一组歌曲加入指定的播放列表文件。当前正在播放的就是这个列表时，
+    //走播放内核的接口，界面上的列表会立刻跟着变。
+    int AddToPlaylist(const std::vector<SongInfo>& songs, const std::wstring& playlist_path);
+
     //从磁盘删除歌曲
     bool DeleteSongsFromDisk(const std::vector<SongInfo>& files);
 
@@ -132,9 +143,6 @@ public:
 
     void InitSongMultiVersionMenu(const SongInfo& song);
     void OnSetSongMultiVersion(SongInfo& song, int version_index);
-
-protected:
-    void AddToPlaylist(const std::vector<SongInfo>& songs, const std::wstring& playlist_path);
 
 private:
     CWnd* GetOwner();

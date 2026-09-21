@@ -16,7 +16,10 @@
 #include "UiMediaLibItemMgr.h"
 #include "SongInfoHelper.h"
 #include "CRecentList.h"
+#include "ListCache.h"
 #include "SongMultiVersion.h"
+#include "OnlineProgress.h"
+#include "OnlineSource.h"
 
 CMusicPlayerCmdHelper::CMusicPlayerCmdHelper(CWnd* pOwner)
     : m_pOwner(pOwner)
@@ -157,6 +160,24 @@ bool CMusicPlayerCmdHelper::OnAddToNewPlaylist(std::function<void(std::vector<So
     return false;
 }
 
+std::wstring CMusicPlayerCmdHelper::ResolvePlaylistPath(const std::wstring& display_name)
+{
+    if (display_name.empty()) return std::wstring();
+    // 「加入播放列表」对话框给出来的是显示名，列表支持分组（「语种 / 歌单名」）之后
+    // 不能再拿 playlist 目录去拼这个字符串，否则分组里的列表永远打不开。
+    CListCache list_cache(CListCache::SubsetType::ST_PLAYLIST_NO_SPEC);
+    list_cache.reload();
+    for (size_t i{}; i < list_cache.size(); ++i)
+    {
+        const ListItem& item{ list_cache.at(i) };
+        if (item.GetDisplayName() == display_name) return item.path;
+    }
+    // 兼容按纯文件名给出的情况（老代码和外部调用可能仍然这么传）
+    const wstring direct{ theApp.m_playlist_dir + display_name + PLAYLIST_EXTENSION };
+    if (CCommon::FileExist(direct)) return direct;
+    return std::wstring();
+}
+
 bool CMusicPlayerCmdHelper::OnAddToPlaylistCommand(std::function<void(std::vector<SongInfo>&)> get_song_list, DWORD command)
 {
     //响应播放列表右键菜单中的“添加到播放列表”
@@ -171,8 +192,8 @@ bool CMusicPlayerCmdHelper::OnAddToPlaylistCommand(std::function<void(std::vecto
             CAddToPlaylistDlg dlg;
             if (dlg.DoModal() == IDOK)
             {
-                wstring playlist_path = theApp.m_playlist_dir + dlg.GetPlaylistSelected() + PLAYLIST_EXTENSION;
-                if (CCommon::FileExist(playlist_path))
+                wstring playlist_path = ResolvePlaylistPath(dlg.GetPlaylistSelected());
+                if (!playlist_path.empty())
                 {
                     AddToPlaylist(selected_item_path, playlist_path);
                 }
@@ -186,7 +207,7 @@ bool CMusicPlayerCmdHelper::OnAddToPlaylistCommand(std::function<void(std::vecto
         else if (command == ID_ADD_TO_MY_FAVOURITE)      //添加到“我喜欢”播放列表
         {
             std::wstring favourite_playlist_path = CRecentList::Instance().GetSpecPlaylist(CRecentList::PT_FAVOURITE).path;
-            AddToPlaylist(selected_item_path, favourite_playlist_path);
+            if (AddToPlaylist(selected_item_path, favourite_playlist_path) < 0) return true;
 
             //添加到“我喜欢”播放列表后，为添加的项目设置favourite标记
             for (const auto& item : selected_item_path)
@@ -924,14 +945,15 @@ bool CMusicPlayerCmdHelper::OnRenamePlaylist(const ListItem& list_item)
         GetOwner()->MessageBox(info.c_str(), NULL, MB_ICONWARNING | MB_OK);
         return false;
     }
-    if (CCommon::FileExist(theApp.m_playlist_dir + new_playlist_name + PLAYLIST_EXTENSION))
+    const wstring target_path = CFilePathHelper(list_item.path).GetDir() + new_playlist_name + PLAYLIST_EXTENSION;
+    if (CCommon::FileExist(target_path))
     {
         wstring info = theApp.m_str_table.LoadTextFormat(L"MSG_PLAYLIST_EXIST_WARNING", { new_playlist_name });
         GetOwner()->MessageBox(info.c_str(), NULL, MB_ICONWARNING | MB_OK);
         return false;
     }
 
-    wstring new_path = CCommon::FileRename(list_item.path, new_playlist_name);   //播放列表后命名后的路径
+    wstring new_path = CCommon::FileRename(list_item.path, new_playlist_name);   //播放列表后命名后的路径（FileRename 保留原目录）
     if (new_path.empty())
     {
         const wstring& info = theApp.m_str_table.LoadText(L"MSG_PLAYLIST_RENANE_FAILED");
@@ -1463,9 +1485,24 @@ void CMusicPlayerCmdHelper::OnSetSongMultiVersion(SongInfo& song, int version_in
     }
 }
 
-void CMusicPlayerCmdHelper::AddToPlaylist(const std::vector<SongInfo>& songs, const std::wstring& playlist_path)
+void CMusicPlayerCmdHelper::ShowTip(const std::wstring& text)
 {
     CMusicPlayerDlg* pPlayerDlg = CMusicPlayerDlg::GetInstance();
+    CPlayerUIBase* ui = pPlayerDlg != nullptr ? pPlayerDlg->GetCurrentUi() : nullptr;
+    if (ui != nullptr) ui->ShowUiTipInfo(text);
+}
+
+int CMusicPlayerCmdHelper::AddToPlaylist(const std::vector<SongInfo>& songs, const std::wstring& playlist_path)
+{
+    CMusicPlayerDlg* pPlayerDlg = CMusicPlayerDlg::GetInstance();
+    auto progress = std::any_of(songs.begin(), songs.end(), [](const auto& song) { return online::CSourceRegistry::IsVirtualPath(song.file_path); })
+        ? online::OnlineProgress::Start(L"加入播放列表", L"正在保存歌曲") : nullptr;
+    auto finish = [&](int count) {
+        if (progress) progress->Finish(count >= 0 ? online::ProgressResult::Succeeded : online::ProgressResult::Failed,
+            count > 0 ? L"已加入 " + std::to_wstring(count) + L" 首歌曲"
+            : count == 0 ? L"歌曲已在播放列表中" : L"未能保存，请检查歌单是否可写或稍后重试");
+        return count;
+    };
     if (CPlayer::GetInstance().IsPlaylistMode() && playlist_path == CPlayer::GetInstance().GetPlaylistPath())
     {
         int rtn = CPlayer::GetInstance().AddSongsToPlaylist(songs);
@@ -1474,7 +1511,7 @@ void CMusicPlayerCmdHelper::AddToPlaylist(const std::vector<SongInfo>& songs, co
             const wstring& info = theApp.m_str_table.LoadText(L"MSG_FILE_EXIST_IN_PLAYLIST");
             pPlayerDlg->MessageBox(info.c_str(), NULL, MB_ICONINFORMATION | MB_OK);
         }
-        else if (rtn == -1)
+        else if (rtn < 0)
         {
             const wstring& info = theApp.m_str_table.LoadText(L"MSG_WAIT_AND_RETRY");
             pPlayerDlg->MessageBox(info.c_str(), NULL, MB_ICONINFORMATION | MB_OK);
@@ -1490,15 +1527,16 @@ void CMusicPlayerCmdHelper::AddToPlaylist(const std::vector<SongInfo>& songs, co
                 ui->ShowUiTipInfo(info);
             }
         }
+        return finish(rtn);
     }
     else
     {
         CPlaylistFile playlist;
-        playlist.LoadFromFile(playlist_path);
+        if (!playlist.LoadFromFile(playlist_path)) return finish(-1);
         int rtn = playlist.AddSongsToPlaylist(songs, theApp.m_media_lib_setting_data.insert_begin_of_playlist);
         if (rtn)
         {
-            playlist.SaveToFile(playlist_path);
+            if (!playlist.SaveToFile(playlist_path)) return finish(-1);
             //显示添加成功提示
             CPlayerUIBase* ui = pPlayerDlg->GetCurrentUi();
             if (ui != nullptr)
@@ -1513,6 +1551,7 @@ void CMusicPlayerCmdHelper::AddToPlaylist(const std::vector<SongInfo>& songs, co
             const wstring& info = theApp.m_str_table.LoadText(L"MSG_FILE_EXIST_IN_PLAYLIST");
             pPlayerDlg->MessageBox(info.c_str(), NULL, MB_ICONINFORMATION | MB_OK);
         }
+        return finish(rtn);
     }
 }
 

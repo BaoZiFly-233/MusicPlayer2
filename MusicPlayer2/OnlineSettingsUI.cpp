@@ -148,6 +148,8 @@ void CSettingsPanelOnline::SettingDataToUi()
 }
 void CSettingsPanelOnline::OnSettingsChanged()
 {
+    // 自动换源由在线页菜单控制，保存面板选项时保留它的最新值。
+    m_data.auto_switch_source = COnlineSettings::Instance().Get().auto_switch_source;
     if (!COnlineSettings::Instance().Save(m_data)) { MessageBoxW(theApp.m_pMainWnd->GetSafeHwnd(), L"在线设置保存失败，请检查磁盘空间。", L"在线音乐", MB_ICONERROR); UpdateSettingsData(); return; }
     COnlineMediaCache::Instance().SetEnabled(m_prefetch); COnlineDailyRewards::Instance().SetEnabled(m_daily); SettingDataToUi();
 }

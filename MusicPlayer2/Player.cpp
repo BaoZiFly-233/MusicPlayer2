@@ -15,6 +15,8 @@
 #include "MediaLibHelper.h"
 #include "SongMultiVersion.h"
 #include "OnlineSource.h"
+#include "OnlinePlaylistImport.h"
+#include "OnlineProgress.h"
 
 CPlayer CPlayer::m_instance;
 
@@ -481,10 +483,20 @@ void CPlayer::IniLyrics(const wstring& lyric_path)
 }
 
 
-void CPlayer::MusicControl(Command command, int volume_step)
+void CPlayer::MusicControl(Command command, int volume_step, const wstring& alternative_path)
 {
     if (m_pCore == nullptr)
         return;
+
+    // PLAY 即使因开流失败而提前返回，也代表用户要求播放；预加载与暂停则不应自动起播。
+    switch (command)
+    {
+    case Command::PLAY: m_playback_requested = true; ++m_playback_generation; break;
+    case Command::PLAY_PAUSE: m_playback_requested = !IsPlaying(); ++m_playback_generation; break;
+    case Command::OPEN: case Command::CLOSE: case Command::STOP: case Command::PAUSE:
+        m_playback_requested = false; ++m_playback_generation; break;
+    default: break;
+    }
 
     // VOLUME_UP和VOLUME_DOWN可在无法播放时使用
     // stop和close也可以在m_index失效无法播放时使用（RemoveSong(s)）
@@ -515,10 +527,14 @@ void CPlayer::MusicControl(Command command, int volume_step)
         m_Lyrics = CLyrics();
         m_inner_lyric = false;
         SongInfo& cur_song = GetCurrentSongInfo2(); // 获取m_playlist[m_index]的引用，m_index无效时取得m_no_use
+        m_online_playback_path = online::CSourceRegistry::IsVirtualPath(cur_song.file_path)
+            && online::CSourceRegistry::IsVirtualPath(alternative_path) ? alternative_path : wstring();
+        auto progress = online::CSourceRegistry::IsVirtualPath(cur_song.file_path)
+            ? online::OnlineProgress::Start(L"准备播放 · " + cur_song.GetTitle(), L"正在获取播放地址") : nullptr;
         m_is_osu = COSUPlayerHelper::IsOsuFile(cur_song.file_path);
         // 在线曲目在播放列表里存的是虚拟路径（如 kugou://<hash>），
         // 这里换成真实的 http 地址再交给播放核心；本地文件原样返回。
-        wstring play_path = online::CSourceRegistry::Instance().ResolvePlayUrl(cur_song.file_path);
+        wstring play_path = online::CSourceRegistry::Instance().ResolvePlayUrl(GetOnlinePlaybackPath());
 
         if (play_path.empty())
         {
@@ -530,9 +546,12 @@ void CPlayer::MusicControl(Command command, int volume_step)
             m_file_opend = true;
             PostMessage(theApp.m_pMainWnd->m_hWnd, WM_MUSIC_STREAM_OPENED, 0, 0);
             m_controls.UpdateControls(PlaybackStatus::Closed);
+            if (progress) progress->Finish(online::ProgressResult::Failed, GetErrorInfo());
             return;
         }
+        if (progress) progress->Update(L"正在连接音频并缓冲");
         m_pCore->Open(play_path.c_str());
+        const int open_error = m_pCore->GetErrorCode();
         GetPlayerCoreError(L"Open");
         if (m_pCore->GetCoreType() == PT_BASS && GetBassHandle() == 0)
             m_error_state = ES_FILE_CANNOT_BE_OPEN;
@@ -578,6 +597,13 @@ void CPlayer::MusicControl(Command command, int volume_step)
         if (m_enable_lastfm) {
             UpdateLastFMCurrentTrack(GetCurrentSongInfo());
         }
+        if (progress)
+        {
+            // 初始化播放列表期间 IsError() 会跳过检测，进度必须依据实际开流结果。
+            const bool failed = m_error_state != ES_NO_ERROR || open_error != 0 || m_error_code != 0;
+            progress->Finish(failed ? online::ProgressResult::Failed : online::ProgressResult::Succeeded,
+                failed ? (open_error ? m_pCore->GetErrorInfo(open_error) : GetErrorInfo()) : L"音频已就绪");
+        }
     }
     break;
     case Command::PLAY:
@@ -595,6 +621,7 @@ void CPlayer::MusicControl(Command command, int volume_step)
         m_pCore->Close();
         m_playing = PS_STOPED;
         SendMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_AFTER_MUSIC_STREAM_CLOSED, 0, 0);
+        m_online_playback_path.clear();
         m_controls.UpdateControls(PlaybackStatus::Closed);
         break;
     case Command::PAUSE:
@@ -1177,7 +1204,10 @@ bool CPlayer::OpenPlaylistFile(wstring& file_path)
 {
     CFilePathHelper helper(file_path);
     ListItem list_item{ LT_PLAYLIST, file_path };
-    if (helper.GetDir() == theApp.m_playlist_dir && helper.GetFileExtension() == PLAYLIST_EXTENSION_2)
+    const wstring& playlist_root = theApp.m_playlist_dir;
+    const bool in_playlist_dir = file_path.size() > playlist_root.size()
+        && _wcsnicmp(file_path.c_str(), playlist_root.c_str(), playlist_root.size()) == 0;
+    if (in_playlist_dir && helper.GetFileExtension() == PLAYLIST_EXTENSION_2)
     {
         return SetList(list_item);
     }
@@ -1300,9 +1330,12 @@ int CPlayer::AddSongsToPlaylist(const vector<SongInfo>& songs)
 
     // 向当前播放列表文件追加songs
     CPlaylistFile playlist;
-    playlist.LoadFromFile(m_playlist_path);
-    int added = playlist.AddSongsToPlaylist(songs, theApp.m_media_lib_setting_data.insert_begin_of_playlist);
-    playlist.SaveToFile(m_playlist_path);
+    int added = -3;
+    if (playlist.LoadFromFile(m_playlist_path))
+    {
+        added = playlist.AddSongsToPlaylist(songs, theApp.m_media_lib_setting_data.insert_begin_of_playlist);
+        if (!playlist.SaveToFile(m_playlist_path)) added = -3;
+    }
 
     m_sort_mode = SM_UNSORT;        // 播放列表模式下的修改会失去排序状态
     m_index = 0;
@@ -1356,6 +1389,47 @@ bool CPlayer::ReloadPlaylist(MediaLibRefreshMode refresh_mode)
 
     IniPlayList(false, refresh_mode);
     return true;
+}
+
+int CPlayer::ApplyOnlineSourceChanges(const wstring& playlist_path, const vector<SongInfo>& original,
+    const vector<SongInfo>& matched, wstring& error)
+{
+    std::unique_lock<std::timed_mutex> lock(GetPlayStatusMutex(), std::try_to_lock);
+    if (!lock.owns_lock() || m_loading) return -2;
+    const bool current = IsPlaylistMode() && !playlist_path.empty()
+        && _wcsicmp(m_playlist_path.c_str(), playlist_path.c_str()) == 0;
+    CPlaylistFile file;
+    if (!current && !file.LoadFromFile(playlist_path))
+    { error = L"原歌单已移动或无法读取，未应用换源结果"; return -1; }
+    auto updated = current ? m_playlist : file.GetPlaylist();
+    const int replaced = online::ApplySourceMatches(updated, original, matched);
+    if (replaced == 0) return 0;
+    if (!online::SaveSourceChanges(updated, playlist_path, error)) return -1;
+    if (current)
+    {
+        const bool reopen = m_player_core_inited && m_index >= 0 && m_index < static_cast<int>(updated.size())
+            && !(updated[m_index] == GetCurrentSongInfo());
+        if (reopen)
+        {
+            // CLOSE 必须发生在旧身份仍有效时，避免将旧歌词和播放状态写到新音源。
+            m_current_song_tmp = updated[m_index];
+            m_current_song_position_tmp = GetCurrentPosition();
+            m_current_song_playing_tmp = IsPlaying();
+            MusicControl(Command::CLOSE);
+        }
+        m_playlist.swap(updated);
+        m_total_time = 0;
+        for (const auto& song : m_playlist) m_total_time += song.length().toInt();
+        OnPlaylistChange();
+        if (reopen)
+        {
+            m_loading = true;
+            lock.release(); // 沿用播放器现有初始化线程的锁交接，由初始化完成流程释放。
+            IniPlayList(false);
+        }
+    }
+    CMusicPlayerCmdHelper::RefreshMediaTabData(CMusicPlayerCmdHelper::ML_PLAYLIST);
+    return replaced;
 }
 
 bool CPlayer::SetContainSubFolder()
@@ -1530,7 +1604,12 @@ std::wstring CPlayer::GetErrorInfo()
     wstring error_info;
     if (m_error_state == ES_FILE_CANNOT_BE_OPEN)
     {
-        auto* source = online::CSourceRegistry::Instance().FindByPath(GetCurrentFilePath());
+        // 失败原因按地址从注册表取：命中失败备忘时音源对象根本没被问过，
+        // 它身上的 GetLastError() 可能还是别的歌的。
+        const wstring current_path = GetOnlinePlaybackPath();
+        const wstring remembered = online::CSourceRegistry::Instance().PlayError(current_path);
+        if (!remembered.empty()) return remembered;
+        auto* source = online::CSourceRegistry::Instance().FindByPath(current_path);
         if (source && !source->GetLastError().empty()) return source->GetLastError();
     }
     if (m_error_state == ES_FILE_NOT_EXIST)
@@ -2540,9 +2619,30 @@ void CPlayer::ConnotPlayWarning() const
         PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_CONNOT_PLAY_WARNING, 0, 0);
 }
 
+wstring CPlayer::GetOnlinePlaybackPath() const
+{
+    return m_online_playback_path.empty() ? GetCurrentFilePath() : m_online_playback_path;
+}
+
+bool CPlayer::OpenOnlineAlternative(const wstring& path, std::uint64_t generation, int position_ms)
+{
+    if (m_loading || !m_playback_requested || generation != m_playback_generation
+        || !online::CSourceRegistry::IsVirtualPath(GetCurrentFilePath())
+        || !online::CSourceRegistry::IsVirtualPath(path)) return false;
+    MusicControl(Command::CLOSE);
+    MusicControl(Command::OPEN, 0, path);
+    if (!IsError() && GetSongLength() > 0)
+    {
+        m_current_position.fromInt((std::max)(0, (std::min)(position_ms, GetSongLength() - 1)));
+        MusicControl(Command::SEEK);
+    }
+    MusicControl(Command::PLAY);
+    return !IsError() && GetSongLength() > 0 && IsPlaying();
+}
+
 bool CPlayer::LoadOnlineCover(const wstring& song_path, const wstring& cover_path)
 {
-    if (song_path != GetCurrentFilePath() || !online::CSourceRegistry::IsVirtualPath(song_path)) return false;
+    if (song_path != GetOnlinePlaybackPath() || !online::CSourceRegistry::IsVirtualPath(song_path)) return false;
     CImage image;
     if (FAILED(image.Load(cover_path.c_str()))) return false;
     CSingleLock sync(&m_album_cover_sync, TRUE);

@@ -137,6 +137,11 @@ protected:
     // 切换当前皮肤中的在线音乐内容页。
     void ToggleOnlinePage();
 
+    // 在线播放的定时器状态：预缓存目标（只在目标变化时才重新排队）和
+    // 歌词、封面回填的探询计数（每 100 毫秒一次的定时器不必每次都查目录）。
+    std::wstring m_online_prefetch_target;
+    int m_online_resource_tick{};
+
     CMiniModeDlg m_miniModeDlg{ m_item_selected, m_items_selected };        //迷你模式对话框
 
     CCortanaLyric m_cortana_lyric;      //用于显示Cortana歌词

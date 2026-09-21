@@ -181,6 +181,10 @@ private:
     ABRepeatMode m_ab_repeat_mode{};
 
     bool m_file_opend{ false };             //如果打开了一个文件，则为true
+    // 自动换源只替换本次播放使用的路径，不改歌单中的歌曲身份。
+    wstring m_online_playback_path;
+    std::uint64_t m_playback_generation{};
+    bool m_playback_requested{};
     std::atomic_bool m_player_core_inited{ false };     //播放内核是否初始化
     bool m_contain_sub_folder{ false };     //文件夹模式是否包含子文件夹
 
@@ -273,7 +277,12 @@ public:
     //使用指定播放列表文件来初始化CPlayer类
     void CreateWithPlaylist(const wstring& playlist_path);
     //控制音乐播放
-    void MusicControl(Command command, int volume_step = 0);
+    void MusicControl(Command command, int volume_step = 0, const wstring& alternative_path = {});
+    std::uint64_t PlaybackGeneration() const { return m_playback_generation; }
+    bool PlaybackRequested() const { return m_playback_requested; }
+    wstring GetOnlinePlaybackPath() const;
+    // 窗口线程持有播放状态锁时调用；过期结果不能重开歌曲。
+    bool OpenOnlineAlternative(const wstring& path, std::uint64_t generation, int position_ms);
     //判断当前音乐是否播放完毕
     bool SongIsOver() const;
     //从播放内核获取当前播放到的位置（更新m_current_position），调用需要取得播放状态锁
@@ -347,6 +356,9 @@ public:
     int AddSongsToPlaylist(const vector<SongInfo>& songs);
     // 在线工作区播放或追加歌曲，支持从文件夹模式转入队列；失败时保留原列表。
     int OpenOnlineSongs(const vector<SongInfo>& songs, bool append);
+    // -2 表示播放状态暂忙，调用方应稍后重试；-1 表示未写入，error 提供原因。
+    int ApplyOnlineSourceChanges(const wstring& playlist_path, const vector<SongInfo>& original,
+        const vector<SongInfo>& matched, wstring& error);
 
     // 重新载入播放列表（没能取得播放状态锁返回false）
     bool ReloadPlaylist(MediaLibRefreshMode refresh_mode);

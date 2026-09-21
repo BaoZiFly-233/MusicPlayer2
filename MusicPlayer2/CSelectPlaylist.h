@@ -101,6 +101,7 @@ public:
     afx_msg void OnEnChangeSearchEdit();
     //afx_msg void OnBnClickedClearButton();
     virtual BOOL PreTranslateMessage(MSG* pMsg);
+    virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam) override;
 protected:
     afx_msg LRESULT OnSearchEditBtnClicked(WPARAM wParam, LPARAM lParam);
 public:

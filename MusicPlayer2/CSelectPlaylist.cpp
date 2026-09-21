@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "CSelectPlaylist.h"
+#include "OnlineMusicModel.h"
 #include "MusicPlayer2.h"
 #include "Player.h"
 #include "Playlist.h"
@@ -510,6 +511,24 @@ BOOL CSelectPlaylistDlg::PreTranslateMessage(MSG* pMsg)
     //    m_Mytip.RelayEvent(pMsg);
 
     return CMediaLibTabDlg::PreTranslateMessage(pMsg);
+}
+
+BOOL CSelectPlaylistDlg::OnCommand(WPARAM wParam, LPARAM lParam)
+{
+    const UINT command = LOWORD(wParam);
+    if (COnlineMusicModel::IsSwitchSourceCommand(command))
+    {
+        const auto item = m_list_search_cache.GetItem(m_left_selected_item);
+        if (item.path.empty()) return TRUE;
+        COnlineMusicModel::Command request{ m_left_selected ? COnlineMusicModel::Action::SwitchFilePlaylist
+            : COnlineMusicModel::Action::SwitchTrackInPlace, static_cast<int>(command - ID_ONLINE_SWITCH_SOURCE_START), item.path };
+        if (!m_left_selected)
+            for (int row : m_right_selected_items)
+                if (row >= 0 && row < static_cast<int>(m_cur_song_list.size())) request.songs.push_back(m_cur_song_list[row]);
+        COnlineMusicModel::Instance().Post(std::move(request));
+        return TRUE;
+    }
+    return CMediaLibTabDlg::OnCommand(wParam, lParam);
 }
 
 

@@ -11,6 +11,7 @@ struct OnlineSettingsData
     DownloadNameOrder name_order{DownloadNameOrder::ArtistTitle};
     bool playlist_subfolder{true};
     bool auto_lyrics{true}, auto_cover{true};
+    bool auto_switch_source{true};
 };
 
 // Online preferences have their own file and lifetime; upstream settings structs remain unchanged.

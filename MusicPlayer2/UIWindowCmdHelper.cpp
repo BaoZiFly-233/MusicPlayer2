@@ -4,6 +4,7 @@
 #include "UserUi.h"
 #include "UiMediaLibItemMgr.h"
 #include "MusicPlayerCmdHelper.h"
+#include "OnlineMusicModel.h"
 #include "PropertyDlg.h"
 #include "COSUPlayerHelper.h"
 #include "PlaylistPropertiesDlg.h"
@@ -402,6 +403,18 @@ void CUIWindowCmdHelper::OnMediaLibPlaylistCommand(UiElement::MediaLibPlaylist* 
     {
         helper.OnPlaylistFixPathError(list_item.path);
     }
+    else if (COnlineMusicModel::IsSwitchSourceCommand(command))
+    {
+        // 「换源到…」：把这份歌单里的在线曲目重新匹配到另一个音源，结果另存为新歌单。
+        // 命令交给在线音乐模型，它会开一条后台任务逐首匹配，本地文件原样保留。
+        const int target = static_cast<int>(command - ID_ONLINE_SWITCH_SOURCE_START);
+        const auto& sources = online::CSourceRegistry::Instance().GetAll();
+        if (target < static_cast<int>(sources.size()) && !list_item.path.empty())
+        {
+            COnlineMusicModel::Command online_command{ COnlineMusicModel::Action::SwitchFilePlaylist, target, list_item.path };
+            COnlineMusicModel::Instance().Post(std::move(online_command));
+        }
+    }
     else if (command == ID_NEW_PLAYLIST)
     {
         helper.OnNewPlaylist();
@@ -690,6 +703,27 @@ void CUIWindowCmdHelper::OnAddToPlaystCommand(UiElement::Playlist* playlist, DWO
     int item_selected{ playlist->GetItemSelected() };
     if (item_selected < 0 || item_selected >= CPlayer::GetInstance().GetSongNum())
         return;
+    // 换源：把选中的这一首（或这几首）在另一个平台上重新找一遍，地址就地替换，不另存歌单。
+    // 在线音乐模型开后台任务，完成后把新地址贴回当前播放列表。
+    if (COnlineMusicModel::IsSwitchSourceCommand(command))
+    {
+        const int target = static_cast<int>(command - ID_ONLINE_SWITCH_SOURCE_START);
+        if (target < static_cast<int>(online::CSourceRegistry::Instance().GetAll().size()))
+        {
+            std::vector<int> rows;
+            playlist->GetItemsSelected(rows);
+            if (rows.empty()) rows.push_back(item_selected);
+            COnlineMusicModel::Command online_command{ COnlineMusicModel::Action::SwitchTrackInPlace, target };
+            auto& player = CPlayer::GetInstance();
+            std::unique_lock<std::timed_mutex> lock(player.GetPlayStatusMutex(), std::try_to_lock);
+            if (!lock.owns_lock()) return;
+            online_command.text = player.GetPlaylistPath();
+            for (int row : rows)
+                if (row >= 0 && row < player.GetSongNum()) online_command.songs.push_back(player.GetPlayList()[row]);
+            COnlineMusicModel::Instance().Post(std::move(online_command));
+        }
+        return;
+    }
     const SongInfo& song_info = CPlayer::GetInstance().GetPlayList()[item_selected];
     CMusicPlayerCmdHelper helper;
     auto getSongList = [&](std::vector<SongInfo>& song_list) {
@@ -710,6 +744,7 @@ void CUIWindowCmdHelper::OnAddToPlaystCommand(UiElement::Playlist* playlist, DWO
 
 void CUIWindowCmdHelper::OnSetSongMultiVersionCommand(UiElement::Playlist* playlist, DWORD command)
 {
+    if (COnlineMusicModel::IsSwitchSourceCommand(command)) return;
     int item_selected{ playlist->GetItemSelected() };
     if (item_selected < 0 || item_selected >= CPlayer::GetInstance().GetSongNum())
         return;

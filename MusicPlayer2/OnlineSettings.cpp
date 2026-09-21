@@ -18,6 +18,7 @@ void COnlineSettings::Configure(const wstring& directory)
     m_data.playlist_subfolder = ini.GetBool(L"download", L"playlist_subfolder", true);
     m_data.auto_lyrics = ini.GetBool(L"resources", L"lyrics", true);
     m_data.auto_cover = ini.GetBool(L"resources", L"cover", true);
+    m_data.auto_switch_source = ini.GetBool(L"playback", L"auto_switch_source", true);
 }
 OnlineSettingsData COnlineSettings::Get() const { lock_guard<mutex> guard(m_mutex); return m_data; }
 bool COnlineSettings::Save(const OnlineSettingsData& data)
@@ -31,6 +32,7 @@ bool COnlineSettings::Save(const OnlineSettingsData& data)
     ini.WriteBool(L"download", L"playlist_subfolder", data.playlist_subfolder);
     ini.WriteBool(L"resources", L"lyrics", data.auto_lyrics);
     ini.WriteBool(L"resources", L"cover", data.auto_cover);
+    ini.WriteBool(L"playback", L"auto_switch_source", data.auto_switch_source);
     if (!ini.Save() || !MoveFileExW(temporary.c_str(), m_path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
     { DeleteFileW(temporary.c_str()); return false; }
     m_data = data; return true;
