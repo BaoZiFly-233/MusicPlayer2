@@ -5,6 +5,7 @@
 #include "CUIDrawer.h"
 #include "IconMgr.h"
 #include "IMouseEvent.h"
+#include "OnlineProgress.h"
 
 #define WM_MAIN_MENU_POPEDUP (WM_USER+117)      //显示弹出式主菜单的消息，wPara为表示菜单显示位置的CPoint的指针
 
@@ -75,6 +76,7 @@ public:
     bool PointInTitlebarArea(CPoint point) const;
     bool PointInAppIconArea(CPoint point) const;
     bool PointInMenubarArea(CPoint point) const;
+    bool PointInOnlineProgress(CPoint point) const;
 
     //获取界面的名称
     virtual wstring GetUIName() { return wstring(); }
@@ -288,6 +290,8 @@ private:
 
     void DrawStatusBar(CRect rect, bool reset = false);
     void DrawTitleBar(CRect rect);
+    void ReserveOnlineProgress(CRect& content, const std::vector<online::ProgressSnapshot>& tasks);
+    void DrawOnlineProgress(const std::vector<online::ProgressSnapshot>& tasks);
 
     int GetToolTipIdOffset();
 
@@ -318,6 +322,7 @@ protected:
 
 private:
     enum { UI_TIP_INFO_TIMER_ID = 1728 };
+    friend class COnlineMusicPreview;
 
     static bool m_show_ui_tip_info;
     wstring m_ui_tip_info;
@@ -325,6 +330,12 @@ private:
     CRect m_app_icon_rect{};        //标题栏应用图标区域
 
     bool m_skip_next_frame{};
+    mutable std::mutex m_activity_mutex;
+    CRect m_activity_rect, m_activity_expand_rect;
+    std::vector<std::pair<CRect, std::uint64_t>> m_activity_cancel_rects;
+    int m_activity_rows{}, m_activity_offset{}, m_activity_count{};
+    bool m_activity_expanded{}, m_activity_pressed{};
+    std::uint64_t m_activity_cancel_pressed{};
 };
 
 //用于在UI中设置字体。

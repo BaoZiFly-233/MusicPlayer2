@@ -6,6 +6,7 @@
 #include "MediaClassifyDlg.h"
 #include "FolderExploreDlg.h"
 #include "AllMediaDlg.h"
+#include "OnlineProgress.h"
 
 // CMediaLibDlg 对话框
 
@@ -53,10 +54,24 @@ protected:
     DECLARE_MESSAGE_MAP()
 
 private:
+    friend class COnlineMusicPreview;
     CTabCtrlEx m_tab_ctrl;
     int m_init_tab{};
     static int m_last_tab;
     int m_tab_show_force{};     //要强制显示出来的标签
+    enum { ONLINE_PROGRESS_TIMER = 19731, ONLINE_CANCEL = 19732, ONLINE_NEXT = 19733 };
+    CRect m_online_progress_rect;
+    CStatic m_online_heading, m_online_detail;
+    CProgressCtrl m_online_progress;
+    CButton m_online_cancel, m_online_next;
+    bool m_online_marquee{};
+    int m_tab_bottom_gap{};
+    size_t m_online_progress_index{};
+    std::vector<online::ProgressSnapshot> m_online_tasks;
+    void LayoutOnlineProgress();
+    void UpdateOnlineProgress();
+    afx_msg void OnCancelOnlineTask();
+    afx_msg void OnNextOnlineTask();
 
 public:
     virtual BOOL OnInitDialog();
@@ -67,6 +82,8 @@ public:
     afx_msg void OnBnClickedMediaLibSettingsBtn();
     afx_msg void OnBnClickedStatisticsInfoButton();
     afx_msg void OnDestroy();
+    afx_msg void OnTimer(UINT_PTR id);
+    afx_msg void OnSize(UINT type, int cx, int cy);
     virtual void OnOK();
     virtual void OnCancel();
 };

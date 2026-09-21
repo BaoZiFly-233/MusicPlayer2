@@ -293,3 +293,12 @@ __pycache__/
 !/MusicPlayer2/language/*.ini
 /enc_temp_folder
 test-*.xml
+
+# 上游逆向素材的本地存档。这些是第三方项目的分发物与源码快照，只作离线参考，
+# 不进入版本库：一是避免把无 license 的上游代码带进本仓库，二是体积大。
+/.upstream-archive/
+
+# 本地逆向用的安装包与提取结果
+*.apk
+/apk_out/
+/.tools/

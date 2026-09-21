@@ -86,6 +86,9 @@ void CPlayerUIBase::DrawInfo(bool reset, CRgn* draw_rgn)
             draw_rect.top = rc_menu_bar.bottom;
         }
 
+        const auto activities = online::OnlineProgress::Snapshot();
+        ReserveOnlineProgress(draw_rect, activities);
+
         //绘制界面中其他信息
         _DrawInfo(draw_rect, reset);
 
@@ -96,6 +99,7 @@ void CPlayerUIBase::DrawInfo(bool reset, CRgn* draw_rgn)
             DrawTitleBar(rc_title_bar);
         if (!rc_menu_bar.IsRectEmpty())
             DrawUiMenuBar(rc_menu_bar);
+        DrawOnlineProgress(activities);
 
         //绘制提示信息
         if (m_show_ui_tip_info && !m_ui_tip_info.empty())
@@ -174,8 +178,116 @@ void CPlayerUIBase::DrawInfo(bool reset, CRgn* draw_rgn)
     m_first_draw = false;
 }
 
+void CPlayerUIBase::ReserveOnlineProgress(CRect& content, const std::vector<online::ProgressSnapshot>& tasks)
+{
+    std::lock_guard<std::mutex> lock(m_activity_mutex);
+    m_activity_rect.SetRectEmpty(); m_activity_expand_rect.SetRectEmpty(); m_activity_cancel_rects.clear();
+    m_activity_count = static_cast<int>(tasks.size());
+    if (tasks.empty() || content.Height() < DPI(80)) { m_activity_rows = 0; return; }
+    const bool compact = content.Height() < DPI(220);
+    const int row_height = DPI(compact ? 28 : 42);
+    const int available = (std::max)(1, (content.Height() - DPI(150)) / row_height);
+    m_activity_rows = m_activity_expanded ? (std::min)({m_activity_count, available, 4}) : 1;
+    m_activity_offset = (std::max)(0, (std::min)(m_activity_offset, m_activity_count - m_activity_rows));
+    if (!m_activity_expanded) m_activity_offset = 0;
+    m_activity_rect = content;
+    m_activity_rect.top = content.bottom - row_height * m_activity_rows;
+    content.bottom = m_activity_rect.top;
+}
+
+void CPlayerUIBase::DrawOnlineProgress(const std::vector<online::ProgressSnapshot>& tasks)
+{
+    std::lock_guard<std::mutex> lock(m_activity_mutex);
+    if (m_activity_rect.IsRectEmpty() || m_activity_rows == 0) return;
+    const int row_height = m_activity_rect.Height() / m_activity_rows;
+    const bool compact = row_height < DPI(40);
+    const auto now = online::OnlineProgress::Now();
+    UiFontGuard font(this, 9);
+    // 与播放控制栏共用背景、字体和进度轨道，任务直接融入皮肤布局。
+    if (IsDrawBackgroundAlpha())
+        m_draw.FillAlphaRect(m_activity_rect, m_colors.color_control_bar_back, GetDefaultAlpha());
+    else
+        m_draw.FillRect(m_activity_rect, m_colors.color_control_bar_back);
+    m_activity_cancel_rects.clear();
+    m_activity_expand_rect.SetRectEmpty();
+    for (int row = 0; row < m_activity_rows; ++row)
+    {
+        const int index = row + m_activity_offset;
+        if (index >= static_cast<int>(tasks.size())) break;
+        const auto& task = tasks[index];
+        CRect band = m_activity_rect;
+        band.top += row * row_height; band.bottom = band.top + row_height;
+        const COLORREF accent = task.result == online::ProgressResult::Failed ? RGB(207, 87, 82)
+            : task.result == online::ProgressResult::Cancelled ? m_colors.color_text : m_colors.color_spectrum;
+        CRect line(band.left + DPI(10), band.top + DPI(2), band.right - DPI(8), band.top + DPI(22));
+        if (row == 0 && tasks.size() > 1)
+        {
+            m_activity_expand_rect = line;
+            m_activity_expand_rect.left = line.right - DPI(92);
+            const auto label = std::to_wstring(index + 1) + L" / " + std::to_wstring(tasks.size())
+                + (m_activity_expanded ? L"  收起 ▴" : L"  展开 ▾");
+            m_draw.DrawWindowText(m_activity_expand_rect, label.c_str(), m_colors.color_text_heighlight, Alignment::RIGHT, false);
+            line.right = m_activity_expand_rect.left - DPI(8);
+        }
+        if (!task.Running() || task.cancellable)
+        {
+            CRect cancel = line;
+            cancel.left = line.right - DPI(20);
+            m_activity_cancel_rects.emplace_back(cancel, task.id);
+            m_draw.DrawWindowText(cancel, L"×", m_colors.color_text, Alignment::CENTER, false);
+            line.right = cancel.left - DPI(6);
+        }
+        const auto counter = task.Counter();
+        const int counter_width = (std::min<int>)(m_draw.GetTextExtent(counter.c_str()).cx + DPI(4), line.Width() / 2);
+        CRect amount = line; amount.left = amount.right - counter_width;
+        m_draw.DrawWindowText(amount, counter.c_str(), accent, Alignment::RIGHT, false);
+        line.right = amount.left - DPI(8);
+        std::wstring phase = task.detail;
+        std::replace(phase.begin(), phase.end(), L'\n', L' ');
+        std::replace(phase.begin(), phase.end(), L'\r', L' ');
+        const auto heading = compact && !phase.empty() ? task.title + L" · " + phase : task.title;
+        m_draw.DrawWindowText(line, heading.c_str(), m_colors.color_text, Alignment::LEFT, false);
+        if (!compact)
+        {
+            UiFontGuard detail_font(this, 8);
+            CRect detail(band.left + DPI(10), band.top + DPI(21), band.right - DPI(10), band.bottom - DPI(5));
+            const auto timing = task.Timing(now);
+            CRect elapsed = detail;
+            elapsed.left = (std::max)(elapsed.left + elapsed.Width() / 2,
+                elapsed.right - m_draw.GetTextExtent(timing.c_str()).cx - DPI(8));
+            m_draw.DrawWindowText(elapsed, timing.c_str(), m_colors.color_text, Alignment::RIGHT, false);
+            detail.right = elapsed.left - DPI(8);
+            m_draw.DrawWindowText(detail, phase.c_str(), m_colors.color_text, Alignment::LEFT, false);
+        }
+        CRect rail(band.left + DPI(10), band.bottom - DPI(3), band.right - DPI(10), band.bottom - DPI(1));
+        m_draw.FillRect(rail, m_colors.color_progress_back);
+        CRect fill = rail;
+        const int percent = task.Percent();
+        if (percent >= 0) fill.right = fill.left + rail.Width() * percent / 100;
+        else if (task.Running())
+        {
+            const int length = (std::max)(DPI(20), rail.Width() / 5);
+            const double phase = (now - task.started) % 2400 / 1200.0;
+            fill.left += static_cast<int>((rail.Width() - length) * (phase <= 1.0 ? phase : 2.0 - phase));
+            fill.right = fill.left + length;
+        }
+        else fill.right = fill.left + DPI(8);
+        if (fill.Width() > 0) m_draw.FillRect(fill, accent);
+    }
+}
+
 bool CPlayerUIBase::LButtonDown(CPoint point)
 {
+    {
+        std::lock_guard<std::mutex> lock(m_activity_mutex);
+        if (m_activity_rect.PtInRect(point))
+        {
+            m_activity_pressed = true; m_activity_cancel_pressed = 0;
+            for (const auto& [rect, id] : m_activity_cancel_rects)
+                if (rect.PtInRect(point)) m_activity_cancel_pressed = id;
+            return true;
+        }
+    }
     for (auto& btn : m_buttons)
     {
         if (btn.second.enable && btn.second.rect.PtInRect(point) != FALSE)
@@ -215,6 +327,10 @@ bool CPlayerUIBase::RButtonUp(CPoint point)
 
 bool CPlayerUIBase::MouseMove(CPoint point)
 {
+    {
+        std::lock_guard<std::mutex> lock(m_activity_mutex);
+        if (m_activity_rect.PtInRect(point)) return true;
+    }
     bool rtn = false;
     for (auto& btn : m_buttons)
     {
@@ -240,6 +356,24 @@ bool CPlayerUIBase::MouseMove(CPoint point)
 
 bool CPlayerUIBase::LButtonUp(CPoint point)
 {
+    {
+        std::lock_guard<std::mutex> lock(m_activity_mutex);
+        if (m_activity_pressed)
+        {
+            m_activity_pressed = false;
+            if (m_activity_cancel_pressed)
+            {
+                for (const auto& [rect, id] : m_activity_cancel_rects)
+                    if (id == m_activity_cancel_pressed && rect.PtInRect(point))
+                    { online::OnlineProgress::RequestCancel(id); online::OnlineProgress::Dismiss(id); }
+                m_activity_cancel_pressed = 0;
+            }
+            else if (m_activity_expand_rect.PtInRect(point))
+            { m_activity_expanded = !m_activity_expanded; m_activity_offset = 0; }
+            return true;
+        }
+        if (m_activity_rect.PtInRect(point)) return true;
+    }
     auto showMenu = [](const CRect& rect, CMenu* pMenu)
         {
             CPoint point;
@@ -573,6 +707,14 @@ bool CPlayerUIBase::RButtonDown(CPoint point)
 
 bool CPlayerUIBase::MouseWheel(int delta, CPoint point)
 {
+    std::lock_guard<std::mutex> lock(m_activity_mutex);
+    if (m_activity_rect.PtInRect(point))
+    {
+        m_activity_expanded = true;
+        m_activity_offset = (std::max)(0, (std::min)(m_activity_count - m_activity_rows,
+            m_activity_offset + (delta < 0 ? 1 : -1)));
+        return true;
+    }
     return false;
 }
 
@@ -1454,12 +1596,19 @@ int CPlayerUIBase::TopRightButtonsWidth() const
 
 bool CPlayerUIBase::PointInControlArea(CPoint point) const
 {
+    { std::lock_guard<std::mutex> lock(m_activity_mutex); if (m_activity_rect.PtInRect(point)) return true; }
     bool point_in_control = false;
     for (const auto& btn : m_buttons)
     {
         point_in_control |= (btn.second.rect.PtInRect(point) != FALSE);
     }
     return point_in_control;
+}
+
+bool CPlayerUIBase::PointInOnlineProgress(CPoint point) const
+{
+    std::lock_guard<std::mutex> lock(m_activity_mutex);
+    return m_activity_rect.PtInRect(point) != FALSE;
 }
 
 bool CPlayerUIBase::PointInTitlebarArea(CPoint point) const

@@ -475,6 +475,7 @@ bool CUserUi::MouseLeave()
 
 bool CUserUi::RButtonUp(CPoint point)
 {
+    if (PointInOnlineProgress(point)) return true;
     //遍历所有元素
     bool rtn = false;
     if (!CPlayerUIBase::PointInMenubarArea(point) && !CPlayerUIBase::PointInTitlebarArea(point))
@@ -490,6 +491,7 @@ bool CUserUi::RButtonUp(CPoint point)
 
 bool CUserUi::RButtonDown(CPoint point)
 {
+    if (PointInOnlineProgress(point)) return true;
     //遍历所有元素
     if (!CPlayerUIBase::PointInMenubarArea(point) && !CPlayerUIBase::PointInTitlebarArea(point))
     {
@@ -501,6 +503,7 @@ bool CUserUi::RButtonDown(CPoint point)
 
 bool CUserUi::MouseWheel(int delta, CPoint point)
 {
+    if (CPlayerUIBase::MouseWheel(delta, point)) return true;
     //遍历所有元素
     auto root_element = GetMouseEventResponseElement();
     bool rtn = root_element->MouseWheel(delta, point);
@@ -511,6 +514,7 @@ bool CUserUi::MouseWheel(int delta, CPoint point)
 
 bool CUserUi::DoubleClick(CPoint point)
 {
+    if (PointInOnlineProgress(point)) return true;
     //遍历所有元素
     bool rtn = false;
     auto root_element = GetMouseEventResponseElement();

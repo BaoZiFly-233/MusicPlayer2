@@ -465,6 +465,9 @@
     <Filter Include="功能逻辑类\ProcessMessage">
       <UniqueIdentifier>{0e243445-cf5f-4426-8799-b047885b7a27}</UniqueIdentifier>
     </Filter>
+    <Filter Include="功能逻辑类\OnlineMusic">
+      <UniqueIdentifier>{d5ac3df7-2f40-4f57-8d2b-53e191aa6e0f}</UniqueIdentifier>
+    </Filter>
     <Filter Include="对话框类\OpenUrlDlg">
       <UniqueIdentifier>{9f59b209-a016-424f-ab17-6c732b5c5bd6}</UniqueIdentifier>
     </Filter>
@@ -551,6 +554,9 @@
     </ClInclude>
     <ClInclude Include="Player.h">
       <Filter>功能逻辑类\Player</Filter>
+    </ClInclude>
+    <ClInclude Include="OnlineProgress.h">
+      <Filter>功能逻辑类\OnlineMusic</Filter>
     </ClInclude>
     <ClInclude Include="stdafx.h">
       <Filter>stdafx</Filter>
@@ -1285,6 +1291,9 @@
     </ClCompile>
     <ClCompile Include="Player.cpp">
       <Filter>功能逻辑类\Player</Filter>
+    </ClCompile>
+    <ClCompile Include="OnlineProgress.cpp">
+      <Filter>功能逻辑类\OnlineMusic</Filter>
     </ClCompile>
     <ClCompile Include="stdafx.cpp">
       <Filter>stdafx</Filter>
