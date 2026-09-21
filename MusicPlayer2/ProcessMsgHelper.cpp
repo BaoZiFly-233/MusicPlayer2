@@ -90,7 +90,16 @@ void CProcessMsgHelper::SendCurrentLyricPosition()
     if (m_hwnd == nullptr)
         return;
     CPlayTime time{ CPlayer::GetInstance().GetCurrentPosition() };		//当前播放时间
-    int progress{ CPlayer::GetInstance().m_Lyrics.GetLyricLrcProgress(time) };
+    // 逐词歌词要用逐词进度。GetLyricLrcProgress 只按时间标签差算整句进度，逐词
+    // 歌词在外面（皮肤、外部程序）的卡拉OK显示就只能跟着整句走。这里没有文本
+    // 测量的设备上下文，用字数当宽度，口径和界面按等宽字体算出来的一致。
+    const auto& lyrics{ CPlayer::GetInstance().m_Lyrics };
+    int progress{};
+    if (lyrics.HasWordTiming())
+        progress = lyrics.GetLyricProgress(time, theApp.m_lyric_setting_data.donot_show_blank_lines, false,
+            [](const std::wstring& str) { return static_cast<int>(str.size()); });
+    else
+        progress = lyrics.GetLyricLrcProgress(time);
     if (last_lyric_position != progress)
         SendIntMessage(m_hwnd, MusicPlayer2SentMsg::CurrentLyricPosition, progress);
     last_lyric_position = progress;

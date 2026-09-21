@@ -94,6 +94,13 @@ public:
     // 判断是否有歌词
     bool IsEmpty() const;
 
+    // 整首歌词里有没有带逐词时间的行（混合歌词只要有一句带就算）。
+    // 播放器按句判断逐词填色（Lyric::HasWordTiming），这个整首的判据留给需要
+    // 「这首是不是逐词歌词」的调用方：回传外部进程的卡拉OK进度、状态显示和自检。
+    bool HasWordTiming() const;
+    // 带逐词时间的歌词行数
+    int GetWordTimingLineCount() const;
+
     LyricType GetLyricType() const;
 
     // 根据时间返回该时间对应的原始歌词序号，多行歌词使用
@@ -115,7 +122,7 @@ public:
     // 注意进度为1000时表示当前歌词“已结束”，不要进行高亮并应根据需要进行高亮取消操作，由于逐字歌词引入此状态可能维持一段时间
     int GetLyricProgress(CPlayTime time, bool ignore_blank, bool blank2mark, std::function<int(const wstring&)> measure) const;
     // 获取Lrc格式的歌词进度，不支持逐字歌词，用于在无法测量文本宽度时使用
-    int GetLyricLrcProgress(CPlayTime time);
+    int GetLyricLrcProgress(CPlayTime time) const;
 
     // 获得歌词文本的编码类型
     CodeType GetCodeType() const;

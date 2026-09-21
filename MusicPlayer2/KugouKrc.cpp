@@ -1,7 +1,9 @@
 ﻿#include "stdafx.h"
 #include "KugouKrc.h"
 #include "KugouCrypto.h"
+#include "nlohmann/json.hpp"
 #include <sstream>
+#include <string>
 #include <vector>
 
 extern "C"
@@ -84,6 +86,52 @@ bool ParseLineTag(const wstring& line, size_t& pos, int& start_ms, int& span_ms)
     return true;
 }
 
+// krc 把逐字歌词之外的附加文本放在 [language:<base64>] 里，解出来是
+//   {"content":[{"type":0,"lyricContent":[...]},{"type":1,"lyricContent":[...]}]}
+// type 0 是罗马音，type 1 是中文翻译。每个 lyricContent 是一行一个词数组，
+// 行序与正文字数行一一对应 —— 中文歌没有翻译时这里是空的，正好自然跳过。
+vector<wstring> ParseKrcTranslations(const wstring& krc)
+{
+    vector<wstring> translations;
+    const wstring marker = L"[language:";
+    const size_t begin = krc.find(marker);
+    if (begin == wstring::npos) return translations;
+    const size_t end = krc.find(L']', begin);
+    if (end == wstring::npos || end <= begin + marker.size()) return translations;
+
+    const wstring encoded = krc.substr(begin + marker.size(), end - begin - marker.size());
+    const string decoded = DecodeBase64(ToUtf8(encoded));
+    if (decoded.empty()) return translations;
+
+    nlohmann::json doc;
+    try { doc = nlohmann::json::parse(decoded); }
+    catch (const nlohmann::json::exception&) { return translations; }
+    if (!doc.contains("content") || !doc["content"].is_array()) return translations;
+
+    for (const auto& item : doc["content"])
+    {
+        // 只要翻译那一份；罗马音对中文用户没什么用
+        if (!item.contains("type") || !item["type"].is_number() || item["type"].get<int>() != 1) continue;
+        if (!item.contains("lyricContent") || !item["lyricContent"].is_array()) continue;
+        for (const auto& row : item["lyricContent"])
+        {
+            string line;
+            if (row.is_array())
+            {
+                for (const auto& word : row)
+                    if (word.is_string()) line += word.get<string>();
+            }
+            else if (row.is_string())
+            {
+                line = row.get<string>();
+            }
+            translations.push_back(FromUtf8(line));
+        }
+        break;
+    }
+    return translations;
+}
+
 } // namespace
 
 string DecryptKrc(const string& base64_content)
@@ -108,6 +156,8 @@ wstring KrcToExtendedLyric(const string& krc_utf8)
     if (krc_utf8.empty()) return wstring();
 
     const wstring krc = FromUtf8(krc_utf8);
+    // 外文歌的翻译藏在这个块里，按行与正文对齐
+    const vector<wstring> translations = ParseKrcTranslations(krc);
     std::wostringstream out;
     int converted_lines = 0;
 
@@ -159,6 +209,10 @@ wstring KrcToExtendedLyric(const string& krc_utf8)
         if (word_count == 0) continue;
 
         out << L"[" << FormatTime(line_start_ms) << L"]" << converted_words << L"\n";
+        // 紧跟一行同时间戳的翻译。播放器的 CLyrics 会把「时间戳相同的两行」
+        // 认成原文加译文（前原文、后译文），这样双语就出来了。
+        if (converted_lines < static_cast<int>(translations.size()) && !translations[converted_lines].empty())
+            out << L"[" << FormatTime(line_start_ms) << L"]" << translations[converted_lines] << L"\n";
         ++converted_lines;
     }
 

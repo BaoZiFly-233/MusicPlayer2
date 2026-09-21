@@ -563,6 +563,22 @@ bool CLyrics::IsEmpty() const
     return (m_lyrics.size() == 0);
 }
 
+bool CLyrics::HasWordTiming() const
+{
+    return GetWordTimingLineCount() > 0;
+}
+
+int CLyrics::GetWordTimingLineCount() const
+{
+    int count{};
+    for (const auto& lyric : m_lyrics)
+    {
+        if (lyric.HasWordTiming())
+            ++count;
+    }
+    return count;
+}
+
 CLyrics::LyricType CLyrics::GetLyricType() const
 {
     return m_lyric_type;
@@ -755,7 +771,7 @@ int CLyrics::GetLyricProgress(CPlayTime time, bool ignore_blank, bool blank2mark
     return min(progress, 1000);
 }
 
-int CLyrics::GetLyricLrcProgress(CPlayTime time)
+int CLyrics::GetLyricLrcProgress(CPlayTime time) const
 {
     if (m_lyrics.empty())
         return 0;
