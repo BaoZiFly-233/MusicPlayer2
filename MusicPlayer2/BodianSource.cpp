@@ -53,6 +53,10 @@ static const wchar_t* API_HOST = L"bd-api.kuwo.cn";
 // 换成别的 UA 会被当成未知客户端，接口返回「歌曲已下线」。
 static const char* BODIAN_USER_AGENT = "Dart/2.10 (dart:io)";
 
+// 专辑曲目一次取多少。专辑一般十几首，取 100 基本都能一页读完，
+// 之后「把整张专辑存为歌单」才不会只存到第一页。
+static const int ALBUM_PAGE_SIZE = 100;
+
 static string MakeDevid()
 {
     // 11 位数字，形如 123849114429 去掉首位后的样子
@@ -202,7 +206,12 @@ bool CBodianSource::ValidateAccount()
 {
     if (!IsLoggedIn()) { m_last_error = L"登录文件缺少有效 uid / token"; return false; }
     json response;
-    if (!SignedRequest(L"/api/ucenter/users/login", {}, response)) return false;
+    // /api/ucenter/users/login 是登录用的 POST 接口，用 GET 调它服务端只回 500（见 GetProfile 的注释），
+    // 早先这里一直用默认的 GET，导入的登录文件因此永远校验不过。请求体为空时两种方法的签名一致，
+    // 所以先用 GET 兼容服务端的宽松处理，失败再按 POST 重试一次。
+    if (!SignedRequest(L"/api/ucenter/users/login", {}, response)
+        && !SignedRequest(L"/api/ucenter/users/login", {}, response, {}, L"POST"))
+        return false;
     if (response.contains("data") && response["data"].is_object())
     {
         // Some successful refreshes return profile data without issuing a new token.
@@ -248,6 +257,7 @@ bool CBodianSource::Browse(const online::BrowseRequest& request, online::BrowseR
     using namespace online;
     result = {};
     m_last_error.clear();
+    if (request.kind == BrowseKind::AlbumTracks) return BrowseAlbumTracks(request.id, request.page, result);
     if (request.kind == BrowseKind::AlbumSearch) return BrowseAlbums(request.id, request.page, result);
     if (request.kind == BrowseKind::Search)
     {
@@ -454,7 +464,7 @@ bool CBodianSource::Search(const wstring& keyword, int page, vector<online::Trac
     if (!Get(path, response))
         return false;
 
-    int code = response.value("code", 0);
+    int code = online::JsonNumber(response, "code");
     if (code != 200)
     {
         // 把服务端的说明一并带上，便于判断是接口变动还是别的原因
@@ -480,7 +490,7 @@ bool CBodianSource::Search(const wstring& keyword, int page, vector<online::Trac
 }
 
 // 搜索结果里补上专辑条目。B源的歌曲搜索不返回专辑实体，综合搜索的
-// albumPage 才有；条目 id 里存「艺术家 + 专辑名」，点进去会用它再搜一次歌曲。
+// albumPage 才有；条目里存 albumId，双击后按 AlbumTracks 取这张专辑的曲目。
 void CBodianSource::AddAlbums(online::BrowseResult& result, const wstring& keyword)
 {
     using namespace online;
@@ -499,14 +509,46 @@ void CBodianSource::AddAlbums(online::BrowseResult& result, const wstring& keywo
     {
         const wstring name = FromUtf8(JsonText(album, "name"));
         if (name.empty()) continue;
+        const wstring id = FromUtf8(JsonText(album, "albumId"));
+        if (!IsServiceId(id)) continue;
         const wstring artist = FromUtf8(JsonText(album, "artist"));
         BrowseItem item;
         item.type = BrowseItem::Type::Album;
         item.title = name;
+        item.id = id;
         item.subtitle = artist.empty() ? L"专辑" : L"专辑 · " + artist;
-        item.id = artist.empty() ? name : artist + L" " + name;
+        const wstring showtime = FromUtf8(JsonText(album, "showtime"));
+        if (showtime.size() >= 4) item.subtitle += L" · " + showtime.substr(0, 4);
         result.items.push_back(std::move(item));
     }
+}
+
+// 专辑曲目：按专辑编号取，返回顺序就是专辑里的曲序。
+// 不要退回用「歌手 + 专辑名」当关键词搜 —— 那样会混进同歌手的其它专辑，顺序也是相关度排的。
+bool CBodianSource::BrowseAlbumTracks(const wstring& album_id, int page, online::BrowseResult& result)
+{
+    using namespace online;
+    result = {};
+    m_last_error.clear();
+    if (!IsServiceId(album_id)) { m_last_error = L"专辑编号无效"; return false; }
+
+    json response;
+    const wstring path = L"/api/service/album/music/" + album_id + L"?pn=" + to_wstring((std::max)(1, page)) +
+        L"&rn=" + to_wstring(ALBUM_PAGE_SIZE) + L"&uid=-1&token=";
+    if (!Get(path, response)) return false;
+    if (JsonNumber(response, "code") != 200 || !response.contains("data") || !response["data"].is_object())
+    { if (m_last_error.empty()) m_last_error = L"专辑曲目读取失败，请稍后重试"; return false; }
+
+    const auto& data = response["data"];
+    if (!data.contains("resultList") || !data["resultList"].is_array())
+    { m_last_error = L"专辑曲目返回的结构与预期不符"; return false; }
+
+    for (const auto& item : data["resultList"]) AddTrack(result, BodianTrack(item));
+    const int total = JsonNumber(data, "total");
+    result.has_more = total > 0 ? (std::max)(1, page) * ALBUM_PAGE_SIZE < total
+        : data["resultList"].size() >= ALBUM_PAGE_SIZE;
+    if (result.items.empty()) m_last_error = L"这张专辑没有可播放的曲目";
+    return !result.items.empty();
 }
 
 // 只搜专辑。和追加逻辑共用同一套字段，但要能如实报告失败，
@@ -533,12 +575,18 @@ bool CBodianSource::BrowseAlbums(const wstring& keyword, int page, online::Brows
     {
         const wstring name = FromUtf8(JsonText(album, "name"));
         if (name.empty()) continue;
+        // 没有 albumId 就打不开专辑，跳过
+        const wstring id = FromUtf8(JsonText(album, "albumId"));
+        if (!IsServiceId(id)) continue;
         const wstring artist = FromUtf8(JsonText(album, "artist"));
         BrowseItem item;
         item.type = BrowseItem::Type::Album;
         item.title = name;
+        item.id = id;
+        // 专辑重名很常见，带上歌手和发行年份方便挑对那张
         item.subtitle = artist.empty() ? L"专辑" : L"专辑 · " + artist;
-        item.id = artist.empty() ? name : artist + L" " + name;
+        const wstring showtime = FromUtf8(JsonText(album, "showtime"));
+        if (showtime.size() >= 4) item.subtitle += L" · " + showtime.substr(0, 4);
         result.items.push_back(std::move(item));
     }
     if (result.items.empty()) m_last_error = L"没有找到相关专辑";
@@ -978,14 +1026,14 @@ wstring CBodianSource::ResolvePlayUrl(const wstring& virtual_path)
     if (!Get(path, response))
         return wstring();
 
-    int code = response.value("code", 0);
+    int code = online::JsonNumber(response, "code");
 
     // 付费墙就是「自动观看广告领会员」的落点：先换一次 30 分钟畅听权益，再重试同一首。
     // 权益是按设备与网络发放的，重试时服务端会直接放行。
     if (code == 20018 && AdRewardEnabled())
     {
         int remain = 0;
-        if (EnsureAdFreeTime(remain) && Get(path, response) && response.value("code", 0) == 200)
+        if (EnsureAdFreeTime(remain) && Get(path, response) && online::JsonNumber(response, "code") == 200)
             code = 200;
     }
 
@@ -1268,7 +1316,13 @@ wstring LrcxToExtendedLyric(const string& lrcx_utf8)
         else
         {
             if (e + 1 < entries.size())
-                entry.ends.back() = (std::min)(entry.ends.back(), (std::max)(0, next_line_ms - entry.ms));
+            {
+                // 个别数据的时间戳不单调，下一句的行时间可能早于本行最后一个字的起点。
+                // 结束时间不能压到起点之前，否则会写出「起点 > 终点」的标签对，
+                // 播放器按两者之差算时长会得到负值。上面那道守卫的前提在这里也要保住。
+                const int end_limit = (std::max)(entry.starts.back(), (std::max)(0, next_line_ms - entry.ms));
+                entry.ends.back() = (std::min)(entry.ends.back(), end_limit);
+            }
             for (size_t i = 0; i < entry.texts.size(); ++i)
             {
                 out << L"<" << LrcxStamp(entry.ms + entry.starts[i]) << L">" << entry.texts[i];
@@ -1346,7 +1400,7 @@ bool CBodianSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
     if (!Get(path, response))
         return false;
 
-    if (response.value("code", 0) != 200 || !response.contains("data"))
+    if (online::JsonNumber(response, "code") != 200 || !response.contains("data"))
         return false;
 
     string content = response["data"].value("content", "");

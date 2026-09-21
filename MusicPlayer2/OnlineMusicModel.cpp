@@ -34,6 +34,7 @@ wstring BrowseTitle(BrowseKind kind)
     {
     case BrowseKind::Search: return L"搜索歌曲";
     case BrowseKind::AlbumSearch: return L"搜索专辑";
+    case BrowseKind::AlbumTracks: return L"加载专辑歌曲";
     case BrowseKind::PlaylistSearch: return L"搜索歌单";
     case BrowseKind::Hot: return L"加载发现";
     case BrowseKind::Recommend: return L"加载推荐";
@@ -212,10 +213,11 @@ void COnlineMusicModel::SetNotice(const wstring& notice)
 void COnlineMusicModel::MarkUnplayable(const wstring& path)
 {
     if (path.empty() || !CSourceRegistry::IsVirtualPath(path)) return;
+    // 只记一次。这个函数由 100 毫秒的定时器在播放出错期间反复调用，
+    // 已经标记过就直接返回，别每次都去清备忘（那是一次加锁加查表）。
+    if (!m_unplayable.insert(path).second) return;
     // 播放失败常常是地址过期或权限变了，先把备忘丢掉，用户再点一次会重新解析
     CSourceRegistry::Instance().ForgetPlayUrl(path);
-    // 只记一次；重画列表但保留用户当前选中行
-    if (!m_unplayable.insert(path).second) return;
     Publish(true, false);
 }
 
@@ -395,6 +397,7 @@ void COnlineMusicModel::SelectPage()
 {
     m_cache_view = false;
     m_interrupted = false;
+    m_state.list_title.clear();
     CancelRequest(); ResetLogin();
     m_state.items.clear(); m_state.detail.clear(); m_state.detail_visible = false; m_state.has_more = false; m_state.request = {};
     if (m_state.page == Page::Local) { ShowLocal(); return; }
@@ -402,6 +405,14 @@ void COnlineMusicModel::SelectPage()
     if (m_state.page == Page::Search)
     {
         m_state.request.kind = SearchKind();
+        // 搜索框里还有词就把上次的搜索重新发一遍：从专辑/榜单里退回来时，
+        // 用户要的是刚才那屏结果，而不是一个空列表。
+        if (!m_state.query.empty())
+        {
+            m_state.request = { SearchKind(), m_state.query, 1 };
+            StartRequest();
+            return;
+        }
         m_state.status = m_state.search_type == 1 ? L"输入专辑名或歌手，按 Enter 搜索专辑。"
             : m_state.search_type == 2 ? L"输入歌单关键词，按 Enter 搜索歌单。"
             : L"输入歌名或歌手，按 Enter 搜索；双击歌曲播放。";
@@ -1253,10 +1264,15 @@ void COnlineMusicModel::SaveLocalAsNativePlaylist(const vector<int>& rows)
         m_state.page == Page::Local ? SetStatus(L"请先选中要迁移的歌曲。") : SetStatus(L"当前列表没有可迁移的在线歌曲。");
         return;
     }
-    const wstring default_name = wstring(L"在线本地歌单 ") + CTime::GetCurrentTime().Format(L"%Y-%m-%d").GetString();
+    // 在专辑/歌单/榜单详情里整张保存时，默认名直接用这份列表的名字（例如专辑名），
+    // 不然用户每次都要自己敲一遍。迁移在线本地歌单时列表没有名字，仍用日期兜底。
+    const bool migrating = m_state.list_title.empty();
+    const wstring default_name = migrating
+        ? wstring(L"在线本地歌单 ") + CTime::GetCurrentTime().Format(L"%Y-%m-%d").GetString() : m_state.list_title;
     wstring saved_name, error;
-    if (!SaveSongsToNativePlaylist(songs, default_name, L"迁移到原生播放列表",
-        L"输入名称，或用「分组/歌单名」按语种分组，例如「日语/本地歌单」。", saved_name, error))
+    if (!SaveSongsToNativePlaylist(songs, default_name,
+        migrating ? L"迁移到原生播放列表" : L"存为原生播放列表",
+        L"输入名称，或用「分组/歌单名」按语种分组，例如「日语/歌单名」。", saved_name, error))
     {
         SetStatus(error);
         return;
@@ -1264,9 +1280,12 @@ void COnlineMusicModel::SaveLocalAsNativePlaylist(const vector<int>& rows)
     if (m_owner)
     {
         m_owner->SetForegroundWindow();
-        const wstring message = L"已保存 " + to_wstring(songs.size()) + L" 首歌曲到原生播放列表「"
-            + saved_name + L"」。\n\n原在线本地歌单不会自动清空，可在「本地歌单」页多选后移除。";
-        MessageBoxW(m_owner->GetSafeHwnd(), message.c_str(), L"迁移完成",
+        wstring message = L"已保存 " + to_wstring(songs.size()) + L" 首歌曲到原生播放列表「"
+            + saved_name + L"」。";
+        // 只有在迁移在线本地歌单时才提这一句：整张存歌单不会动任何已有列表
+        if (m_state.page == Page::Local)
+            message += L"\n\n原在线本地歌单不会自动清空，可在「本地歌单」页多选后移除。";
+        MessageBoxW(m_owner->GetSafeHwnd(), message.c_str(), L"已保存为播放列表",
             MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
     }
     SetStatus(L"已迁移 " + to_wstring(songs.size()) + L" 首到原生播放列表「" + saved_name + L"」。");
@@ -1430,7 +1449,7 @@ void COnlineMusicModel::Execute(const Command& command)
         || command.action == Action::PlayNext || command.action == Action::AddToPlaylist
         || command.action == Action::AddToFavourite || command.action == Action::RetryPlayback
         || command.action == Action::CopyInfo || command.action == Action::OpenFileLocation
-        || command.action == Action::RemoveLocal || command.action == Action::SwitchSource
+        || command.action == Action::RemoveLocal
         || command.action == Action::SwitchInPlace;
     if (row_action && command.revision != m_state.revision) { SetStatus(L"列表已更新，请重新选择歌曲。"); return; }
     // 点播失败过的曲目再点一次就是想重试：丢掉备忘和灰色标记，重新解析。
@@ -1475,6 +1494,7 @@ void COnlineMusicModel::Execute(const Command& command)
         m_state.page = Page::Search;
         CancelRequest(); ResetLogin();
         m_state.items.clear(); m_state.detail.clear(); m_state.detail_visible = false; m_state.has_more = false;
+        m_state.list_title.clear();
         m_state.request = { SearchKind(), m_state.query, 1 };
         StartRequest(); break;
     case Action::SearchPlaylists:
@@ -1496,21 +1516,17 @@ void COnlineMusicModel::Execute(const Command& command)
                 break;
             }
             if (m_task) { SetStatus(L"上一次加载还没结束，请稍候再双击。"); break; }
-            // 专辑条目回搜索页：B源没有单独的专辑歌曲接口，id 里存的是
-            // 「艺术家 + 专辑名」，当作关键词再搜一次即可列出该专辑的曲目。
-            if (item.type == BrowseItem::Type::Album)
-            {
-                m_state.page = Page::Search;
-                m_state.query = item.id;
-                ++m_state.query_revision;
-                m_state.request = { BrowseKind::Search, m_state.query, 1 };
-                StartRequest();
-                break;
-            }
-            m_state.request = { item.type == BrowseItem::Type::Keyword ? BrowseKind::Search
+            // 专辑按 AlbumTracks 取这张专辑的曲目；以前是回搜索页用「歌手 + 专辑名」
+            // 再搜一次，结果混进同歌手的其它专辑、顺序也是相关度排的，这里不再那么做。
+            const bool album = item.type == BrowseItem::Type::Album;
+            const bool keyword = item.type == BrowseItem::Type::Keyword;
+            m_state.request = { album ? BrowseKind::AlbumTracks : keyword ? BrowseKind::Search
                 : item.type == BrowseItem::Type::Chart ? BrowseKind::ChartTracks : BrowseKind::PlaylistTracks, item.id, 1 };
-            if (item.type == BrowseItem::Type::Keyword)
+            if (keyword)
             { m_state.page = Page::Search; m_state.query = item.title; ++m_state.query_revision; }
+            // 记下这份专辑/歌单/榜单的名字：整批下载按它建子文件夹，「存为歌单」用它当默认名
+            m_state.list_title = (album || item.type == BrowseItem::Type::Chart || item.type == BrowseItem::Type::Playlist)
+                ? item.title : std::wstring();
             StartRequest();
         } break;
     case Action::Play: case Action::Queue: case Action::PlayNext: case Action::RetryPlayback:
@@ -1522,14 +1538,16 @@ void COnlineMusicModel::Execute(const Command& command)
         m_playback.push_back({std::move(songs), append, command.action == Action::PlayNext});
         break;
     }
-    case Action::AddToPlaylist: AddToExistingPlaylist(SelectedSongs(command.rows)); break;
-    case Action::SwitchSource:
+    case Action::PlayAll:
     {
-        // 选中了就换选中的，没选中就换当前列表里的全部（在线本地歌单页就是整个歌单）
-        auto songs = command.rows.empty() ? SelectedSongs({}, true) : SelectedSongs(command.rows);
-        SwitchSource(command.value, songs, L"");
+        // 「播放全部」不要求先选中：打开专辑/歌单以后可以直接整张播
+        auto songs = SelectedSongs({}, true);
+        if (songs.empty()) { SetStatus(L"当前列表没有可播放的在线歌曲。"); break; }
+        forgive(songs);
+        m_playback.push_back({std::move(songs), false});
         break;
     }
+    case Action::AddToPlaylist: AddToExistingPlaylist(SelectedSongs(command.rows)); break;
     case Action::SwitchInPlace:
     {
         // 在线页里的单曲/所选就地换源：本地歌单页直接改那一份歌单；搜索结果这类
@@ -1588,7 +1606,9 @@ void COnlineMusicModel::Execute(const Command& command)
         auto songs = command.rows.empty() ? SelectedSongs({}, true) : SelectedSongs(command.rows);
         if (songs.empty()) { SetStatus(L"当前列表没有可下载的歌曲。"); break; }
         std::wstring directory;
-        if (!GetOnlineDownloadDirectory(m_owner, directory)) break;
+        // 没有选中行时是整批下载当前列表；这时按设置把文件放进以歌单名命名的子文件夹
+        if (!GetOnlineDownloadDirectory(m_owner, directory,
+            command.rows.empty() ? m_state.list_title : std::wstring())) break;
         size_t count{};
         for (const auto& song : songs)
         {
@@ -1649,6 +1669,8 @@ void COnlineMusicModel::Execute(const Command& command)
     case Action::OpenPlaylist:
         if (!CurrentSource() || !IsServiceId(m_state.query))
         { SetStatus(L"在搜索框输入歌单编号；B源歌单使用 编号_来源（4、5 或 13）。"); break; }
+        // 按编号打开时没有歌单名可用，整批下载就不建子文件夹
+        m_state.list_title.clear();
         m_state.page = Page::Cloud; m_state.request = { BrowseKind::PlaylistTracks, m_state.query, 1 }; StartRequest(); break;
     case Action::ImportAll:
         if (m_state.request.kind == BrowseKind::PlaylistTracks && !m_task) StartRequest(false, true); break;

@@ -18,7 +18,7 @@ class COnlineMusicModel
     friend bool RunOnlineMusicTests(const std::wstring& log_path, bool network);
 public:
     enum class Page { Discover, Search, Recommend, Charts, Cloud, Local, Account };
-    enum class Action { Activate, Page, Source, Query, Search, Open, Play, Queue, Save,
+    enum class Action { Activate, Page, Source, Query, Search, Open, Play, PlayAll, Queue, Save,
         Import, ImportExternal, Export, Lyrics, Back, Refresh, More, OpenPlaylist, ImportAll, Login, Logout,
         Download, CacheInfo, ToggleCache, ClearCache, SearchPlaylists, SignIn, ToggleSignIn, ImportAccount,
         AdReward, ToggleAdReward, SearchType, RemoveLocal, SaveAsNativePlaylist, ClearLocal,
@@ -29,8 +29,7 @@ public:
         RetryPlayback,
         // 把一组在线歌曲重新匹配到另一个音源，导入进来的歌单就是靠它换源。
         // command.value 是目标音源在注册表里的下标。
-        SwitchSource,
-        // 同上，但作用于当前播放列表（用户从媒体库打开的导入歌单就在这里）。
+        // 作用于当前播放列表（用户从媒体库打开的导入歌单就在这里）。
         SwitchPlayerPlaylist,
         // 同上，作用于指定路径的原生播放列表（媒体库里右键某份歌单时用）。路径走 command.text。
         SwitchFilePlaylist,
@@ -57,6 +56,9 @@ public:
         // 与 items 下标一致：这首歌是否在在线本地歌单里（列表里用实心红心标出来）
         std::vector<bool> saved_local;
         std::wstring query, status{ L"在线音乐" }, detail, playback_error, notice;
+        // 当前这份专辑/歌单/榜单的名字（从行的标题记下来，仅在窗口线程写）。
+        // 「把整张专辑存为歌单」用它当默认名，整批下载也用它命名子文件夹。
+        std::wstring list_title;
         // 正在播放的在线曲目的音质说明（「当前播放：无损」）。它不是操作结果，
         // 单独存放，不再覆盖 status：切歌时状态栏不会丢掉「已加载 30 项」这类信息。
         std::wstring quality_note;

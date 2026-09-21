@@ -34,6 +34,11 @@ static const wchar_t* SEC_ACCOUNT = L"kugou_account";
 static const char* KG_THASH = "5d816a0";
 static const char* KG_RF = "B9EDA08A64250DEFFBCADDEE00F8F25F";
 
+// 专辑曲目一次取多少。专辑一般十几首，取 50 基本都能一页读完，
+// 之后「把整张专辑存为歌单」才不会只存到第一页。
+// 注意这个接口上限就是 50，传 100 会被判 invalid param（20010）。
+static const int ALBUM_PAGE_SIZE = 50;
+
 CKugouSource::CKugouSource()
 {
 }
@@ -82,6 +87,21 @@ bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseRe
         path = L"/openapi/kmr/v2/rank/audio";
         body = json{{"show_portrait_mv", 1}, {"show_type_total", 1}, {"filter_original_remarks", 1},
             {"area_code", 1}, {"pagesize", 30}, {"rank_cid", 0}, {"type", 1}, {"page", page}, {"rank_id", ToUtf8(request.id)}}.dump(); break;
+    case BrowseKind::AlbumTracks:
+    {
+        // 专辑曲目：直接按专辑编号取，返回的就是专辑里的曲序，
+        // 不要再退回用「歌手 + 专辑名」搜关键词 —— 那样会混进同歌手的其它专辑。
+        if (request.id.empty() || request.id.size() > 18
+            || request.id.find_first_not_of(L"0123456789") != std::wstring::npos)
+        { m_last_error = L"专辑编号无效"; return false; }
+        path = L"/v1/album_audio/lite"; router = L"openapi.kugou.com";
+        // album_id 必须发数字：发字符串服务端判 invalid param（20010），
+        // 而且它参与签名，改类型就等于换了一份请求体。
+        const long long album_id = _wtoi64(request.id.c_str());
+        // 一次多取一些，整张专辑基本都能在一页里读完
+        body = json{{"album_id", album_id}, {"is_buy", ""}, {"page", page}, {"pagesize", ALBUM_PAGE_SIZE}}.dump();
+        break;
+    }
     case BrowseKind::Recommend:
         path = L"/everyday_song_recommend"; router = L"everydayrec.service.kugou.com";
         body = json{{"platform", "android"}, {"userid", GetAccount().userid}}.dump(); break;
@@ -142,7 +162,8 @@ bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseRe
         }
         else AddTrack(result, KugouTrack(value));
     }
-    result.has_more = request.kind != BrowseKind::Charts && request.kind != BrowseKind::Recommend && list->size() >= 30;
+    result.has_more = request.kind != BrowseKind::Charts && request.kind != BrowseKind::Recommend
+        && (request.kind == BrowseKind::AlbumTracks ? list->size() >= ALBUM_PAGE_SIZE : list->size() >= 30);
     if (!list->empty() && result.items.empty()) { m_last_error = L"接口有返回数据，但曲目标识不完整"; return false; }
     return true;
 }
@@ -300,6 +321,7 @@ bool CKugouSource::Request(const wstring& url_path, const wstring& router,
         if (!body.empty()) headers_str += "Content-Type: application/json\r\n";
         else if (method && wcscmp(method, L"POST") == 0) headers_str += "Content-Type: application/x-www-form-urlencoded\r\n";
         if (url_path == L"/openapi/kmr/v2/rank/audio") headers_str += "kg-tid: 369\r\n";
+        if (url_path == L"/v1/album_audio/lite") headers_str += "kg-tid: 255\r\n";
         if (!online::HttpRequest(url, body, FromUtf8(headers_str), result, m_last_error, method))
         {
             return false;
@@ -351,7 +373,7 @@ bool CKugouSource::Search(const wstring& keyword, int page, vector<online::Track
         return false;
 
     // 接口正常时 status 为 1
-    if (response.value("status", 0) != 1)
+    if (online::JsonNumber(response, "status") != 1)
         return false;
 
     if (!response.contains("data") || !response["data"].contains("lists"))
@@ -363,27 +385,29 @@ bool CKugouSource::Search(const wstring& keyword, int page, vector<online::Track
     {
         online::Track track;
 
-        string hash = item.value("FileHash", "");
+        string hash = online::JsonText(item, "FileHash");
         if (hash.empty())
             continue;
 
-        string mixsongid = item.value("MixSongID", "");
+        string mixsongid = online::JsonText(item, "MixSongID");
         // 虚拟路径里带上 MixSongID，取地址时要用
         track.virtual_path = FromUtf8("kugou://" + hash +
             (mixsongid.empty() ? "" : "?aaid=" + mixsongid));
 
-        track.title = FromUtf8(item.value("OriSongName", ""));
+        track.title = FromUtf8(online::JsonText(item, "OriSongName"));
         if (track.title.empty())
         {
             // 退而用「歌手 - 歌名」形式的完整文件名
-            string file_name = item.value("FileName", "");
+            string file_name = online::JsonText(item, "FileName");
             size_t sep = file_name.find(" - ");
             track.title = FromUtf8(sep == string::npos ? file_name : file_name.substr(sep + 3));
         }
 
-        track.artist = FromUtf8(item.value("SingerName", ""));
-        track.album = FromUtf8(item.value("AlbumName", ""));
-        track.duration_ms = item.value("Duration", 0) * 1000;   // 接口返回的是秒
+        track.artist = FromUtf8(online::JsonText(item, "SingerName"));
+        track.album = FromUtf8(online::JsonText(item, "AlbumName"));
+        // 接口返回的是秒。取不到或不是数字时留 0，别让类型不符把整页搜索打断。
+        const int duration_seconds = online::JsonNumber(item, "Duration");
+        if (duration_seconds > 0 && duration_seconds < 2147483) track.duration_ms = duration_seconds * 1000;
         track.extra = FromUtf8(mixsongid);
         track.cover_url = online::CoverUrl(item);
 
@@ -396,7 +420,7 @@ bool CKugouSource::Search(const wstring& keyword, int page, vector<online::Track
 
 // 专辑搜索：单独一个路由（msearch），返回结构也和歌曲搜索不同 ——
 // 列表字段是 info 而不是 lists，命名是小写的 albumname/singername。
-// 条目里存「歌手 + 专辑名」，点进去会用它再搜一次歌曲。
+// 条目里存平台给的专辑编号（albumid），点进去按 AlbumTracks 取这张专辑的曲目。
 bool CKugouSource::BrowseAlbums(const wstring& keyword, int page, online::BrowseResult& result)
 {
     using namespace online;
@@ -421,24 +445,29 @@ bool CKugouSource::BrowseAlbums(const wstring& keyword, int page, online::Browse
 
     json response;
     if (!Request(L"/api/v3/search/album", ROUTER_MSEARCH, params, "", response)) return false;
-    if (response.value("status", 0) != 1) { m_last_error = L"专辑搜索未返回数据"; return false; }
+    if (online::JsonNumber(response, "status") != 1) { m_last_error = L"专辑搜索未返回数据"; return false; }
     if (!response.contains("data") || !response["data"].contains("info")) return false;
 
     for (const auto& item : response["data"]["info"])
     {
-        const wstring name = FromUtf8(item.value("albumname", ""));
+        const wstring name = FromUtf8(online::JsonText(item, "albumname"));
         if (name.empty()) continue;
-        const wstring artist = FromUtf8(item.value("singername", ""));
+        // 有的条目没带 albumid，没有编号就打不开专辑，直接跳过
+        const wstring id = FromUtf8(online::JsonText(item, "albumid"));
+        if (!IsServiceId(id)) continue;
+        const wstring artist = FromUtf8(online::JsonText(item, "singername"));
 
         BrowseItem album;
         album.type = BrowseItem::Type::Album;
         album.title = name;
-        // 曲目数是选专辑时最有用的信息，直接放在副标题里
+        album.id = id;
+        // 专辑重名很常见，把歌手、发行年份和曲目数一起放进副标题，方便挑对那张
+        album.subtitle = artist.empty() ? L"专辑" : L"专辑 · " + artist;
+        const wstring publish = FromUtf8(online::JsonText(item, "publishtime"));
+        if (publish.size() >= 4) album.subtitle += L" · " + publish.substr(0, 4);
         const int count = item.contains("songcount") && item["songcount"].is_number()
             ? item["songcount"].get<int>() : 0;
-        album.subtitle = artist.empty() ? L"专辑" : L"专辑 · " + artist;
-        if (count > 0) album.subtitle += L"，" + to_wstring(count) + L" 首";
-        album.id = artist.empty() ? name : artist + L" " + name;
+        if (count > 0) album.subtitle += L" · " + to_wstring(count) + L" 首";
         result.items.push_back(std::move(album));
     }
     if (result.items.empty()) m_last_error = L"没有找到相关专辑";
@@ -935,13 +964,13 @@ bool CKugouSource::RegisterDevice()
     try
     {
         json result = json::parse(plain);
-        if (result.value("status", 0) != 1 || !result.contains("data"))
+        if (online::JsonNumber(result, "status") != 1 || !result.contains("data"))
         {
             m_last_error = L"设备注册被拒绝（" + FromUtf8(plain.substr(0, 120)) + L"）";
             return false;
         }
 
-        string dfid = result["data"].value("dfid", "");
+        string dfid = online::JsonText(result["data"], "dfid");
         if (dfid.empty())
         {
             m_last_error = L"设备注册成功但没返回 dfid";
@@ -981,7 +1010,7 @@ bool CKugouSource::GetQrCode(wstring& qr_content)
     if (!RequestLoginApi(L"/v2/qrcode", params, response))
         return false;
 
-    if (response.value("status", 0) != 1 || !response.contains("data"))
+    if (online::JsonNumber(response, "status") != 1 || !response.contains("data"))
     {
         string dumped = response.dump();
         if (dumped.size() > 160)
@@ -990,7 +1019,8 @@ bool CKugouSource::GetQrCode(wstring& qr_content)
         return false;
     }
 
-    string key = response["data"].value("qrcode", "");
+    // 二维码是纯数字长串，服务端换成数字类型也要能取到
+    string key = online::JsonText(response["data"], "qrcode");
     if (key.empty())
     {
         m_last_error = L"登录接口没有返回二维码";
@@ -1025,7 +1055,8 @@ CKugouSource::QrStatus CKugouSource::CheckQrCode()
         return QrStatus::Failed;
 
     const auto& data = response["data"];
-    int status = data.value("status", -1);
+    // status 缺失或类型不符时按「状态异常」处理，不能退回 0 —— 0 的含义是二维码已过期
+    const int status = data.contains("status") ? online::JsonNumber(data, "status") : -1;
 
     // 0 过期 / 1 等待扫码 / 2 待确认 / 4 授权成功
     switch (status)
@@ -1066,7 +1097,11 @@ bool CKugouSource::GetProfile(online::AccountProfile& profile)
     vector<pair<string, string>> params{{"appid", LITE_APPID}, {"clientver", LITE_CLIENTVER},
         {"mid", m_device.mid}, {"dfid", m_device.dfid}, {"clienttime", to_string(now)}, {"plat", "1"}};
     json response;
-    const string body = json{{"visit_time", now}, {"usertype", 1}, {"p", encrypted}, {"userid", stoll(account.userid)}}.dump();
+    // userid 只做过非空校验，格式不对时 stoll 会抛异常（那会让整个账号页崩掉），解析失败按 0 提交
+    long long userid = 0;
+    try { userid = stoll(account.userid); }
+    catch (...) { userid = 0; }
+    const string body = json{{"visit_time", now}, {"usertype", 1}, {"p", encrypted}, {"userid", userid}}.dump();
     if (!encrypted.empty() && Request(L"/v3/get_my_info", L"usercenter.kugou.com", params, body, response)
         && online::JsonNumber(response, "status") == 1 && response.contains("data"))
         profile.name = FromUtf8(online::JsonText(response["data"], "nickname"));

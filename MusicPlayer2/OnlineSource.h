@@ -51,7 +51,8 @@ struct Lyric
 
 // AlbumSearch 是「只搜专辑」：Search 会把歌曲和专辑混在一起返回，
 // 但用户明确想找某张专辑时，单独一类更直接。音源不支持就返回 false。
-enum class BrowseKind { Search, AlbumSearch, Hot, Recommend, Charts, ChartTracks, Playlists, PlaylistTracks, PlaylistSearch };
+// AlbumTracks 取一张专辑的曲目，id 是平台给的专辑编号（不是「歌手 专辑名」那种关键词）。
+enum class BrowseKind { Search, AlbumSearch, AlbumTracks, Hot, Recommend, Charts, ChartTracks, Playlists, PlaylistTracks, PlaylistSearch };
 enum class QrStatus { Expired, Waiting, Scanned, Authorized, Failed };
 struct AccountProfile
 {
@@ -61,14 +62,15 @@ struct AccountProfile
 struct BrowseRequest
 {
     BrowseKind kind{ BrowseKind::Hot };
-    std::wstring id;       // 搜索词、分类编号或歌单编号，不接受任意接口地址
+    std::wstring id;       // 搜索词、专辑/分类/歌单编号，不接受任意接口地址
     int page{ 1 };
 };
 
 struct BrowseItem
 {
-    // Album 是搜索结果里的专辑条目。点它没有专门的专辑歌曲接口，
-    // 而是把 id 里存的「艺术家 + 专辑名」当作关键词再搜一次，效果等价。
+    // Album 是搜索结果里的专辑条目，id 里存平台给的专辑编号，
+    // 双击后按 AlbumTracks 取曲目（不要退回用「歌手 + 专辑名」当关键词搜，
+    // 那样拿到的是同歌手的所有歌，顺序也不是专辑顺序）。
     enum class Type { Song, Keyword, Chart, Playlist, Album };
     Type type{ Type::Song };
     Track track;

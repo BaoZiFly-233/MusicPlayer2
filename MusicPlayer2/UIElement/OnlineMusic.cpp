@@ -70,8 +70,8 @@ std::wstring OnlineMusicList::GetHoverButtonTooltip(int index, int row)
 {
     switch (index)
     {
-    case HB_PLAY: return m_state && m_state->unplayable.size() > static_cast<size_t>(row) && m_state->unplayable[row]
-        ? L"重试播放（上次播放失败）" : L"播放";
+    // 失败过的行按钮写成「重试播放」，动作也必须跟着走重试，别让按钮和菜单两种说法
+    case HB_PLAY: return IsItemEnabled(row) ? L"播放" : L"重试播放（上次播放失败）";
     case HB_PLAY_NEXT: return L"下一首播放";
     case HB_QUEUE: return L"加入播放队列";
     case HB_SAVE: return IsSavedRow(row) ? L"从在线本地歌单移除" : L"保存到在线本地歌单";
@@ -82,7 +82,7 @@ void OnlineMusicList::OnHoverButtonClicked(int btn_index, int row)
 {
     switch (btn_index)
     {
-    case HB_PLAY: DispatchRow(Model::Action::Play, row); break;
+    case HB_PLAY: DispatchRow(IsItemEnabled(row) ? Model::Action::Play : Model::Action::RetryPlayback, row); break;
     case HB_PLAY_NEXT: DispatchRow(Model::Action::PlayNext, row); break;
     case HB_QUEUE: DispatchRow(Model::Action::Queue, row); break;
     case HB_SAVE: DispatchRow(IsSavedRow(row) ? Model::Action::RemoveLocal : Model::Action::Save, row); break;
@@ -303,6 +303,7 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
         M_CACHE_INFO, M_TOGGLE_CACHE, M_CLEAR_CACHE,
         M_SIGN_IN, M_TOGGLE_SIGN_IN, M_AD_REWARD, M_TOGGLE_AD_REWARD,
         M_IMPORT_FILE, M_IMPORT_LINK, M_AUTO_SWITCH,
+        M_PLAY_ALL, M_SAVE_LIST,
         // 换源的子菜单按音源下标编号，直接映射到注册表里的顺序
         M_SWITCH_BASE = 100, M_SWITCH_PLAYER_BASE = 120, M_SWITCH_PLAYER_NOOP_UNAVAILABLE = 119
     };
@@ -361,13 +362,34 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
     }
     else
     {
-        // 专辑、歌单、榜单这些行只能打开
-        menu.AppendMenuW(state->busy ? MF_GRAYED : MF_STRING, M_OPEN_ROW, L"打开");
+        // 专辑、歌单、榜单这些行只能打开。按行类型给准确的叫法，别一律叫「打开」
+        const wchar_t* label = L"打开";
+        const int first = selected_rows.empty() ? -1 : selected_rows.front();
+        if (first >= 0 && first < static_cast<int>(state->items.size()))
+        {
+            switch (state->items[first].type)
+            {
+            case online::BrowseItem::Type::Album: label = L"打开专辑（列出曲目）"; break;
+            case online::BrowseItem::Type::Chart: label = L"打开榜单（列出曲目）"; break;
+            case online::BrowseItem::Type::Playlist: label = L"打开歌单（列出曲目）"; break;
+            case online::BrowseItem::Type::Keyword: label = L"按这个关键词搜索"; break;
+            default: break;
+            }
+        }
+        menu.AppendMenuW(state->busy ? MF_GRAYED : MF_STRING, M_OPEN_ROW, label);
     }
     if (full)
     {
         menu.AppendMenuW(MF_SEPARATOR);
-        // 页面
+        // 整份列表的操作：不用先选中，直接作用于当前这一屏的全部曲目
+        const bool list_songs = !state->songs.empty();
+        const UINT list_flag = list_songs ? MF_STRING : MF_GRAYED;
+        menu.AppendMenuW(list_flag, M_PLAY_ALL, L"播放全部");
+        const std::wstring save_label = state->list_title.empty()
+            ? L"把当前列表存为歌单…" : L"把整张「" + state->list_title + L"」存为歌单…";
+        menu.AppendMenuW(list_flag, M_SAVE_LIST, save_label.c_str());
+        menu.AppendMenuW(MF_SEPARATOR);
+        // 导入与换源
         menu.AppendMenuW(MF_STRING, M_IMPORT_FILE, L"从本地歌单文件导入…");
         menu.AppendMenuW(MF_STRING, M_IMPORT_LINK, L"从外部平台 歌单链接导入…");
         // 当前播放列表换源：从媒体库打开的导入歌单走这里，结果另存为新歌单
@@ -381,7 +403,7 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
             player_menu.EnableMenuItem(M_SWITCH_PLAYER_NOOP_UNAVAILABLE, MF_BYCOMMAND | MF_GRAYED);
             menu.AppendMenuW(MF_STRING | MF_POPUP, reinterpret_cast<UINT_PTR>(player_menu.Detach()), L"把当前播放列表换源到…");
         }
-        menu.AppendMenuW(MF_STRING, M_OPEN_PLAYLIST, L"打开搜索框中的歌单编号");
+        menu.AppendMenuW(MF_STRING, M_OPEN_PLAYLIST, L"打开歌单编号…（先在搜索框输入编号）");
         menu.AppendMenuW(MF_STRING | (state->request.kind == online::BrowseKind::PlaylistTracks ? 0 : MF_GRAYED),
             M_IMPORT_ALL, L"将完整云歌单导入本地");
         menu.AppendMenuW(MF_SEPARATOR);
@@ -393,15 +415,22 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
         menu.AppendMenuW(MF_STRING | (state->auto_switch_source ? MF_CHECKED : 0),
             M_AUTO_SWITCH, L"无法播放时自动换源");
         menu.AppendMenuW(MF_SEPARATOR);
-        // 账号
-        const UINT kugou = state->source == 0 ? MF_STRING : MF_GRAYED;
-        const UINT bodian = state->source == 1 ? MF_STRING : MF_GRAYED;
-        menu.AppendMenuW(kugou, M_SIGN_IN, L"K源今日签到领会员 / 检查到账");
-        menu.AppendMenuW(kugou | (COnlineDailyRewards::Instance().Enabled() ? MF_CHECKED : 0), M_TOGGLE_SIGN_IN, L"K源自动签到领会员");
-        menu.AppendMenuW(bodian, M_AD_REWARD, L"观看广告领取B源会员畅听");
-        menu.AppendMenuW(bodian | (CBodianAdRewards::Instance().Enabled() ? MF_CHECKED : 0), M_TOGGLE_AD_REWARD, L"自动观看广告领会员");
-        menu.AppendMenuW(bodian, M_SEARCH_PLAYLISTS, L"按关键词搜索B源歌单");
-        menu.AppendMenuW(bodian, M_IMPORT_ACCOUNT, L"导入B源登录文件…");
+        // 账号：只摆当前音源相关的项。另一个音源的项在这里是灰的、点了没反应，
+        // 摆出来只是噪音，所以干脆不显示。
+        if (state->source == 0)
+        {
+            menu.AppendMenuW(MF_STRING, M_SIGN_IN, L"领取今天的K源会员 / 检查到账");
+            menu.AppendMenuW(MF_STRING | (COnlineDailyRewards::Instance().Enabled() ? MF_CHECKED : 0),
+                M_TOGGLE_SIGN_IN, L"每天自动领取K源会员");
+        }
+        else
+        {
+            menu.AppendMenuW(MF_STRING, M_AD_REWARD, L"看广告领 30 分钟B源会员");
+            menu.AppendMenuW(MF_STRING | (CBodianAdRewards::Instance().Enabled() ? MF_CHECKED : 0),
+                M_TOGGLE_AD_REWARD, L"自动看广告领B源会员");
+            menu.AppendMenuW(MF_STRING, M_SEARCH_PLAYLISTS, L"按关键词搜索B源公开歌单");
+            menu.AppendMenuW(MF_STRING, M_IMPORT_ACCOUNT, L"导入B源登录文件…");
+        }
     }
 
     CPoint point; GetCursorPos(&point);
@@ -421,6 +450,14 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
     };
     for (const auto& command : commands)
         if (command.first == value) { dispatch(command.second); return; }
+    // 整份列表的操作要看整屏，不读选中行：不带行号投递，模型按「全部」处理
+    if (value == M_PLAY_ALL || value == M_SAVE_LIST)
+    {
+        Model::Command command{value == M_PLAY_ALL ? Model::Action::PlayAll : Model::Action::SaveAsNativePlaylist};
+        command.revision = state->revision;
+        Model::Instance().Post(std::move(command));
+        return;
+    }
     // 换源子菜单：编号减去基址就是目标音源在注册表里的下标
     const size_t source_count = online::CSourceRegistry::Instance().GetAll().size();
     if (value >= M_SWITCH_BASE && value < M_SWITCH_BASE + source_count)
@@ -647,7 +684,8 @@ void OnlineMusic::SyncLayout(const Model::State& state)
     FindElement<Button>("online_locate")->SetEnable(playing_here);
     m_last_playing = playing;
     const bool back_available = state.detail_visible || state.request.kind == online::BrowseKind::ChartTracks
-        || state.request.kind == online::BrowseKind::PlaylistTracks;
+        || state.request.kind == online::BrowseKind::PlaylistTracks
+        || state.request.kind == online::BrowseKind::AlbumTracks;
     FindElement("online_back")->SetVisible(back_available);
     FindElement<Button>("online_back")->SetEnable(back_available && !state.busy);
 }

@@ -848,6 +848,40 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
                 }
                 catch (const std::exception&) { check(false, "live response parsing"); }
             }
+            // 专辑：搜到专辑 → 按专辑编号打开 → 拿到的应该就是这张专辑的歌，顺序是专辑曲序。
+            // 以前是拿「歌手 + 专辑名」再搜一次，结果混进同歌手的其它专辑，这里守住回归。
+            {
+                try
+                {
+                    online::BrowseResult albums;
+                    const bool searched = source->Browse({online::BrowseKind::AlbumSearch, L"叶惠美", 1}, albums);
+                    log << "album search count=" << albums.items.size()
+                        << " error=" << kugou::ToUtf8(source->GetLastError()) << "\n";
+                    check(searched && !albums.items.empty(), "live album search");
+                    if (searched && !albums.items.empty())
+                    {
+                        const auto& album = albums.items.front();
+                        check(album.type == online::BrowseItem::Type::Album && !album.id.empty(),
+                            "live album carries a platform id");
+                        online::BrowseResult tracks;
+                        const bool opened = source->Browse({online::BrowseKind::AlbumTracks, album.id, 1}, tracks);
+                        log << "album " << kugou::ToUtf8(album.title) << " tracks=" << tracks.items.size()
+                            << " error=" << kugou::ToUtf8(source->GetLastError()) << "\n";
+                        check(opened && !tracks.items.empty(), "live album tracks");
+                        int titled = 0, same_album = 0;
+                        for (const auto& item : tracks.items)
+                        {
+                            if (!item.track.title.empty()) ++titled;
+                            if (!item.track.album.empty() && item.track.album == album.title) ++same_album;
+                        }
+                        log << "album tracks titled=" << titled << " same_album=" << same_album << "\n";
+                        check(titled == static_cast<int>(tracks.items.size()), "live album tracks keep their titles");
+                        check(same_album * 2 >= static_cast<int>(tracks.items.size()),
+                            "live album tracks all belong to the album");
+                    }
+                }
+                catch (const std::exception&) { check(false, "live album response parsing"); }
+            }
             if (source->GetScheme() == L"bodian")
             {
                 online::BrowseResult result;
@@ -1039,6 +1073,14 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
             candidates.push_back(no_duration);
             const auto best = PickBest(source, candidates);
             check(best.level == MatchLevel::Auto, "missing candidate duration is not penalized");
+        }
+        {   // 源曲没有歌手时同理：这一项不参与，不能因为歌手对不上就把整首淘汰掉
+            ImportTrack source; source.title = L"戒烟"; source.duration_ms = 293000;
+            std::vector<Track> candidates;
+            Track named; named.virtual_path = L"kugou://NAMED"; named.title = L"戒烟"; named.artist = L"李荣浩";
+            candidates.push_back(named);
+            const auto best = PickBest(source, candidates);
+            check(best.level == MatchLevel::Auto, "missing source artist is not rejected");
         }
         {   // 60 秒试听片段要被时长规则筛掉
             ImportTrack source; source.title = L"Lip & Hip"; source.artist = L"泫雅"; source.duration_ms = 209000;

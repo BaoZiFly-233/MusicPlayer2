@@ -279,6 +279,20 @@ inline std::wstring KugouBadge(const nlohmann::json& value)
 
     const auto sq = value.find("SQ");
     if (sq != value.end() && sq->is_object() && JsonInt64(*sq, "filesize") > 0) return L"无损";
+
+    // 专辑曲目与榜单走的是另一套返回结构：权限在 copyright 里，音质看 audio_info 有没有高档 hash。
+    // 不补这一段的话，专辑曲目在列表里会全部没有状态标记。
+    const auto copyright = value.find("copyright");
+    if (copyright != value.end() && copyright->is_object())
+    {
+        if (JsonNumber(*copyright, "privilege") == 8 || JsonNumber(*copyright, "privilege_128") == 8
+            || JsonNumber(*copyright, "privilege_320") == 8 || JsonNumber(*copyright, "privilege_flac") == 8)
+            return L"试听";
+    }
+    const auto info = value.find("audio_info");
+    if (info != value.end() && info->is_object()
+        && (!JsonText(*info, "hash_flac").empty() || !JsonText(*info, "hash_super").empty()))
+        return L"无损";
     return {};
 }
 
@@ -286,23 +300,28 @@ inline Track KugouTrack(const nlohmann::json& value)
 {
     Track track;
     const auto& audio = value.contains("audio_info") && value["audio_info"].is_object() ? value["audio_info"] : value;
+    // 专辑曲目接口把标题、作者和编号放在 base 里，其余接口放在外层，这里两边都认。
+    const auto& base = value.contains("base") && value["base"].is_object() ? value["base"] : value;
     std::string hash = JsonText(audio, "hash");
     if (hash.empty()) hash = JsonText(audio, "hash_128");
     if (hash.empty()) hash = JsonText(value, "FileHash");
     if (hash.size() != 32 || hash.find_first_not_of("0123456789abcdefABCDEF") != std::string::npos) return track;
     std::string id = JsonText(value, "album_audio_id");
+    if (id.empty()) id = JsonText(base, "album_audio_id");
     if (id.empty()) id = JsonText(value, "MixSongID");
     if (id.empty() && value.contains("album_info")) id = JsonText(value["album_info"], "album_audio_id");
     if (id.find_first_not_of("0123456789") != std::string::npos) id.clear();
     track.virtual_path = kugou::FromUtf8("kugou://" + hash + (id.empty() ? "" : "?aaid=" + id));
     std::string title = JsonText(value, "OriSongName");
     if (title.empty()) title = JsonText(value, "songname");
+    if (title.empty()) title = JsonText(base, "audio_name");
     if (title.empty()) title = JsonText(audio, "audio_name");
     if (title.empty()) title = JsonText(value, "name");
     if (title.empty()) title = JsonText(value, "filename");
     track.title = kugou::FromUtf8(title);
     std::string artist = JsonText(value, "SingerName");
     if (artist.empty()) artist = JsonText(value, "singername");
+    if (artist.empty()) artist = JsonText(base, "author_name");
     if (artist.empty() && value.contains("authors") && value["authors"].is_array())
     {
         for (const auto& author : value["authors"])

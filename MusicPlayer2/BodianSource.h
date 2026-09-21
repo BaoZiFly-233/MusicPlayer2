@@ -92,10 +92,12 @@ public:
         int status{};   // 3 表示已完成，其余可领
     };
     // 搜索结果里补上专辑条目：B源的歌曲搜索不返回专辑实体，
-    // 而综合搜索的 albumPage 有。专辑条目点进去会用它再搜一次歌曲。
+    // 而综合搜索的 albumPage 有。条目里存 albumId，双击后按 AlbumTracks 取曲目。
     void AddAlbums(online::BrowseResult& result, const std::wstring& keyword);
-    // 只搜专辑：综合搜索的 albumPage 就是专辑列表，条目同样用「艺术家 + 专辑名」再搜歌曲
+    // 只搜专辑：综合搜索的 albumPage 就是专辑列表
     bool BrowseAlbums(const std::wstring& keyword, int page, online::BrowseResult& result);
+    // 一张专辑的曲目，按平台给的曲序返回
+    bool BrowseAlbumTracks(const std::wstring& album_id, int page, online::BrowseResult& result);
     bool GetEarningTasks(std::vector<EarningTask>& tasks);
     // 领取一个任务的金币。task_type 取 listen 或 sign。
     // 服务端用同一个接口发放，区别只在 taskType；已领过或尚未轮到的返回 code 1。
