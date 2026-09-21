@@ -584,13 +584,16 @@ void COnlineMediaCache::Process(const shared_ptr<State>& state, const Work& work
                 if (GetLastError() != ERROR_FILE_EXISTS && GetLastError() != ERROR_ALREADY_EXISTS) break;
             }
         }
-        if (!saved && error.empty()) error = L"歌曲保存失败，请检查目标目录和磁盘空间";
+        // 用户取消时不要报成「保存失败，请检查磁盘空间」：文案会误导，失败数也会多记一条。
+        if (!saved && error.empty())
+            error = cancelled() ? L"保存已取消" : L"歌曲保存失败，请检查目标目录和磁盘空间";
     }
     {
         lock_guard<mutex> guard(state->lock);
         if (!work.directory.empty()) {
             const bool saved = error.empty() && !file.empty();
-            if (saved) ++state->saved; else ++state->failed;
+            const bool save_cancelled = error == L"保存已取消";
+            if (saved) ++state->saved; else if (!save_cancelled) ++state->failed;
             state->downloads[work.track.virtual_path] = saved ? (missing.empty() ? L"已下载" : L"标签不全") : L"下载失败";
         }
         state->status = !error.empty() ? error : work.directory.empty() ? L"下一首已缓存"

@@ -269,7 +269,9 @@ string DecodeBase64(const string& encoded)
     string result;
     result.reserve(encoded.size() * 3 / 4 + 3);
 
-    int buffer = 0;
+    // 用无符号累积：bits 到 8 就吐一字节，但 buffer 里始终留着不足一字节的尾巴，
+    // 连着一长串字符后左移会把最高位挤出 int 的符号位，那是有符号左移溢出（UB）。
+    uint32_t buffer = 0;
     int bits = 0;
     for (unsigned char ch : encoded)
     {
@@ -279,7 +281,7 @@ string DecodeBase64(const string& encoded)
         if (value < 0)              // 跳过换行、空格等非法字符
             continue;
 
-        buffer = (buffer << 6) | value;
+        buffer = ((buffer << 6) | static_cast<uint32_t>(value)) & 0xFFFFFF;
         bits += 6;
         if (bits >= 8)
         {

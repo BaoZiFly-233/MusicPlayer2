@@ -54,6 +54,8 @@ wstring StripBrackets(const wstring& text)
 
 // 把歌手名拆成单个歌手。外部平台用「/」、B源用「&」，还有中文顿号等。
 // 必须拆开两两比较：同一歌手的写法可能一个是中文名一个是外文名，整串比会把正确结果误杀。
+// 注意间隔号「·」不算分隔符：它只出现在中文音译名里（迈克尔·杰克逊），
+// 拆开之后两边都变成半截名字，和外文的 Michael Jackson 一个字都对不上。
 vector<wstring> SplitArtists(const wstring& artist)
 {
     vector<wstring> result;
@@ -61,7 +63,7 @@ vector<wstring> SplitArtists(const wstring& artist)
     for (wchar_t ch : artist)
     {
         const bool separator = ch == L'/' || ch == L'&' || ch == L'、' || ch == L';'
-            || ch == L'；' || ch == L',' || ch == L'，' || ch == L'·' || ch == L'|';
+            || ch == L'；' || ch == L',' || ch == L'，' || ch == L'|';
         if (separator)
         {
             if (!current.empty()) { result.push_back(current); current.clear(); }
@@ -84,13 +86,27 @@ const wchar_t* VERSION_WORDS[] = {
 
 // 数一个歌名里有多少个版本词。source_words 是源歌名里本来就有的词，这些不扣分
 // （否则《Live Forever》这种正常歌名会被误杀）。
+// 英文词必须落在词首：归一化把空格都去掉了，只按子串找的话 Olive、Discover、Democracy
+// 会被当成 live、cover、demo 命中，正常歌名白白挨一次扣分。
+bool ContainsVersionWord(const wstring& text, const wstring& word)
+{
+    const bool ascii_word = !word.empty() && word.front() < 128;
+    size_t pos = text.find(word);
+    while (pos != wstring::npos)
+    {
+        if (!ascii_word || pos == 0 || !iswalnum(text[pos - 1])) return true;
+        pos = text.find(word, pos + 1);
+    }
+    return false;
+}
+
 int CountVersionWords(const wstring& normalized, const set<wstring>& source_words)
 {
     int count = 0;
     for (const wchar_t* word : VERSION_WORDS)
     {
         if (source_words.count(word) != 0) continue;
-        if (normalized.find(word) != wstring::npos) ++count;
+        if (ContainsVersionWord(normalized, word)) ++count;
     }
     return count;
 }
@@ -266,7 +282,7 @@ MatchResult PickBest(const ImportTrack& source, const vector<Track>& candidates)
     set<wstring> source_words;
     const wstring source_normalized = Normalize(source.title);
     for (const wchar_t* word : VERSION_WORDS)
-        if (source_normalized.find(word) != wstring::npos) source_words.insert(word);
+        if (ContainsVersionWord(source_normalized, word)) source_words.insert(word);
 
     int best_version_hits = INT_MAX;
     for (const auto& candidate : candidates)
