@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "OnlineSource.h"
+#include "SongInfo.h"
 #include <functional>
 #include <string>
 #include <vector>
@@ -51,7 +52,8 @@ ImportReference ParseShareText(const std::wstring& text);
 
 // 拉取歌单曲目。cancelled 返回 true 时尽快退出。
 bool FetchPlaylist(const ImportReference& reference, std::vector<ImportTrack>& tracks,
-    std::wstring& error, const std::function<bool()>& cancelled);
+    std::wstring& error, const std::function<bool()>& cancelled,
+    std::wstring* playlist_name = nullptr);
 
 // ---- 匹配 ----
 
@@ -75,5 +77,10 @@ int Similarity(const std::wstring& a, const std::wstring& b);
 
 // 从搜索返回的候选里挑最合适的一首
 MatchResult PickBest(const ImportTrack& source, const std::vector<Track>& candidates);
+
+// 仅替换仍与原歌曲身份相符的条目；保留期间新增的歌曲、排序及收藏属性。
+int ApplySourceMatches(std::vector<SongInfo>& playlist, const std::vector<SongInfo>& original,
+    const std::vector<SongInfo>& matched);
+bool SaveSourceChanges(const std::vector<SongInfo>& playlist, const std::wstring& path, std::wstring& error);
 
 } // namespace online

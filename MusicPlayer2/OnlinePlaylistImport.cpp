@@ -1,5 +1,7 @@
 ﻿#include "stdafx.h"
 #include "OnlinePlaylistImport.h"
+#include "Playlist.h"
+#include "Common.h"
 #include "OnlineHttp.h"
 #include "KugouCrypto.h"
 #include "nlohmann/json.hpp"
@@ -391,7 +393,7 @@ wstring ResolveRedirect(const wstring& url, wstring& error)
 // 网易云：先取歌单详情拿到完整 id 列表，再分批补全歌曲信息。
 // 注意普通歌单的 tracks 字段只给 10 首（是固定上限，不是版权过滤），只能信 trackIds。
 bool FetchNetease(const wstring& id, vector<ImportTrack>& tracks, wstring& error,
-    const function<bool()>& cancelled)
+    const function<bool()>& cancelled, wstring* playlist_name)
 {
     const wstring detail_url = L"https://music.163.com/api/v6/playlist/detail?id=" + id + L"&n=1000";
     wstring detail_text;
@@ -404,6 +406,7 @@ bool FetchNetease(const wstring& id, vector<ImportTrack>& tracks, wstring& error
         const auto root = nlohmann::json::parse(kugou::ToUtf8(detail_text));
         if (!root.contains("playlist")) { error = L"这个歌单不存在或没有公开"; return false; }
         const auto& playlist = root["playlist"];
+        if (playlist_name) *playlist_name = kugou::FromUtf8(playlist.value("name", ""));
         const auto& track_ids = playlist.value("trackIds", nlohmann::json::array());
         for (const auto& item : track_ids)
         {
@@ -470,7 +473,7 @@ bool FetchNetease(const wstring& id, vector<ImportTrack>& tracks, wstring& error
 // QQ 音乐：一次请求就能拿到全部曲目（实测 2000 多首也是全量返回）。
 // 唯一门槛是必须带 Referer，否则接口直接拒绝。
 bool FetchQQ(const wstring& id, vector<ImportTrack>& tracks, wstring& error,
-    const function<bool()>& cancelled)
+    const function<bool()>& cancelled, wstring* playlist_name)
 {
     const wstring url = L"https://i.y.qq.com/qzone-music/fcg-bin/fcg_ucc_getcdinfo_byids_cp.fcg"
         L"?type=1&json=1&utf8=1&onlysong=0&nosign=1&disstid=" + id +
@@ -492,6 +495,7 @@ bool FetchQQ(const wstring& id, vector<ImportTrack>& tracks, wstring& error,
         }
         const auto list = root.value("cdlist", nlohmann::json::array());
         if (list.empty()) { error = L"歌单里没有歌曲"; return false; }
+        if (playlist_name) *playlist_name = kugou::FromUtf8(list[0].value("dissname", ""));
 
         for (const auto& song : list[0].value("songlist", nlohmann::json::array()))
         {
@@ -524,7 +528,7 @@ bool FetchQQ(const wstring& id, vector<ImportTrack>& tracks, wstring& error,
 } // namespace
 
 bool FetchPlaylist(const ImportReference& reference, vector<ImportTrack>& tracks,
-    wstring& error, const function<bool()>& cancelled)
+    wstring& error, const function<bool()>& cancelled, wstring* playlist_name)
 {
     tracks.clear();
     error.clear();
@@ -550,13 +554,44 @@ bool FetchPlaylist(const ImportReference& reference, vector<ImportTrack>& tracks
     switch (resolved.source)
     {
     case ImportSource::Netease:
-        return FetchNetease(resolved.id, tracks, error, cancelled);
+        return FetchNetease(resolved.id, tracks, error, cancelled, playlist_name);
     case ImportSource::QQ:
-        return FetchQQ(resolved.id, tracks, error, cancelled);
+        return FetchQQ(resolved.id, tracks, error, cancelled, playlist_name);
     default:
         error = L"暂不支持这个平台的歌单";
         return false;
     }
 }
 
+int ApplySourceMatches(vector<SongInfo>& playlist, const vector<SongInfo>& original, const vector<SongInfo>& matched)
+{
+    int replaced = 0;
+    for (auto& song : playlist)
+    {
+        for (size_t i = 0; i < original.size() && i < matched.size(); ++i)
+        {
+            if (!(song == original[i]) || matched[i].file_path == original[i].file_path
+                || !CSourceRegistry::IsVirtualPath(original[i].file_path)
+                || !CSourceRegistry::IsVirtualPath(matched[i].file_path)) continue;
+            song.file_path = matched[i].file_path;
+            song.title = matched[i].title; song.artist = matched[i].artist; song.album = matched[i].album;
+            song.start_pos.fromInt(0); song.end_pos = matched[i].end_pos;
+            song.is_cue = false; song.cue_file_path.clear(); song.lyric_file.clear();
+            song.bitrate = 0; song.freq = 0; song.bits = 0; song.channels = 0;
+            song.SetChannelInfoAcquired(false);
+            ++replaced;
+            break;
+        }
+    }
+    return replaced;
+}
+bool SaveSourceChanges(const vector<SongInfo>& playlist, const wstring& path, wstring& error)
+{
+    if (path.empty()) { error = L"没有可写入的原歌单"; return false; }
+    if (CCommon::FileExist(path) && !CopyFileW(path.c_str(), (path + L".bak").c_str(), FALSE))
+    { error = L"无法备份原歌单，未应用换源结果"; return false; }
+    if (!CPlaylistFile::SavePlaylistToFile(playlist, path))
+    { error = L"歌单保存失败，原内容已保留"; return false; }
+    return true;
+}
 } // namespace online
