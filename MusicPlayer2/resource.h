@@ -994,8 +994,6 @@
 #define ID_SLOW_DOWN                    33143
 #define ID_ORIGINAL_SPEED               33144
 #define ID_ADD_TO_NEW_PLAYLIST_AND_PLAY 33145
-// 换源到…：媒体库播放列表右键菜单里的子菜单，每一项对应一个在线音源
-#define ID_ONLINE_SWITCH_SOURCE_START   40000
 #define ID_PLAY_ITEM_IN_FOLDER_MODE     33147
 #define ID_COPY_TEXT                    33148
 #define ID_ALWAYS_SHOW_STATUS_BAR       33149
@@ -1092,34 +1090,39 @@
 #define ID_SONGS_MULTI_VERSION_ITEM_MAX 33511
 #define ID_LIST_ITEM_PREVIEW            33512
 
-// K源扫码登录
-#define IDD_KUGOU_LOGIN_DIALOG          696
-#define IDC_KUGOU_QR_STATIC             1394
-#define IDC_KUGOU_LOGIN_STATUS_STATIC   1395
-#define IDC_KUGOU_REFRESH_BUTTON        1396
+// 在线音乐（本分支专有）自用的号段，刻意与上游的连续号段分开：
+// 上游新增资源时不会和我们撞号，这三行 _APS_NEXT_* 也能一直保持上游原值，
+// 于是上游更新 resource.h 时不会在这里产生冲突。改这里时请继续留在本号段内。
+//   对话框 3000 起　控件 3010 起　命令 40000 起
+#define IDD_KUGOU_LOGIN_DIALOG          3000
+#define IDC_KUGOU_QR_STATIC             3010
+#define IDC_KUGOU_LOGIN_STATUS_STATIC   3011
+#define IDC_KUGOU_REFRESH_BUTTON        3012
 // 在线音乐搜索相关
-#define ID_ONLINE_MUSIC                 33520
-#define ID_DOWNLOAD_CURRENT             33521
-#define IDD_ONLINE_SETTINGS_DIALOG      697
-#define IDD_ONLINE_DOWNLOAD_SETUP       698
-#define IDC_ONLINE_DOWNLOAD_DIR         1400
-#define IDC_ONLINE_BROWSE               1401
-#define IDC_ONLINE_NAME_ORDER           1402
-#define IDC_ONLINE_PLAYLIST_FOLDER      1403
-#define IDC_ONLINE_NAME_EXAMPLE         1404
-#define IDC_ONLINE_AUTO_LYRIC           1405
-#define IDC_ONLINE_AUTO_COVER           1406
-#define IDC_ONLINE_PREFETCH             1407
-#define IDC_ONLINE_DAILY                1408
-#define IDC_ONLINE_CLEAR_CACHE          1409
-#define IDC_ONLINE_OPEN_DOWNLOADS       1410
+#define IDD_ONLINE_SETTINGS_DIALOG      3001
+#define IDD_ONLINE_DOWNLOAD_SETUP       3002
+#define IDC_ONLINE_DOWNLOAD_DIR         3020
+#define IDC_ONLINE_BROWSE               3021
+#define IDC_ONLINE_NAME_ORDER           3022
+#define IDC_ONLINE_PLAYLIST_FOLDER      3023
+#define IDC_ONLINE_NAME_EXAMPLE         3024
+#define IDC_ONLINE_AUTO_LYRIC           3025
+#define IDC_ONLINE_AUTO_COVER           3026
+#define IDC_ONLINE_PREFETCH             3027
+#define IDC_ONLINE_DAILY                3028
+#define IDC_ONLINE_CLEAR_CACHE          3029
+#define IDC_ONLINE_OPEN_DOWNLOADS       3030
+// 40000-40099 留给「换源到…」：每一项按音源下标往后排（见 COnlineMusicModel::IsSwitchSourceCommand）
+#define ID_ONLINE_SWITCH_SOURCE_START   40000
+#define ID_ONLINE_MUSIC                 40100
+#define ID_DOWNLOAD_CURRENT             40101
 // Next default values for new objects
 // 
 #ifdef APSTUDIO_INVOKED
 #ifndef APSTUDIO_READONLY_SYMBOLS
-#define _APS_NEXT_RESOURCE_VALUE        697
-#define _APS_NEXT_COMMAND_VALUE         33521
-#define _APS_NEXT_CONTROL_VALUE         1397
+#define _APS_NEXT_RESOURCE_VALUE        694
+#define _APS_NEXT_COMMAND_VALUE         33513
+#define _APS_NEXT_CONTROL_VALUE         1387
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif
