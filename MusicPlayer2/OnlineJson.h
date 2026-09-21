@@ -3,6 +3,7 @@
 #include "KugouCrypto.h"
 #include "nlohmann/json.hpp"
 #include <limits>
+#include <ctime>
 
 namespace online
 {
@@ -58,6 +59,20 @@ inline void ReadKugouMembership(const nlohmann::json& data, AccountProfile& prof
     profile.membership = active ? (JsonText(*membership, "product_type") == "svip" ? L"SVIP" : L"VIP") : L"非 VIP";
     profile.expires = active ? kugou::FromUtf8(JsonText(*membership, "vip_end_time")) : L"";
 }
+// 毫秒时间戳这类大数值超出 int 范围，需要用 64 位读取，否则会被截断。
+inline long long JsonInt64(const nlohmann::json& value, const char* key)
+{
+    auto it = value.find(key);
+    if (it == value.end()) return 0;
+    if (it->is_number_integer()) return it->get<long long>();
+    if (it->is_string())
+    {
+        try { return std::stoll(it->get<std::string>()); }
+        catch (...) { return 0; }
+    }
+    return 0;
+}
+
 inline AccountProfile ReadBodianProfile(const nlohmann::json& data)
 {
     AccountProfile profile;
@@ -66,7 +81,55 @@ inline AccountProfile ReadBodianProfile(const nlohmann::json& data)
     const bool known = (user != data.end() && user->contains("isVip")) || (pay != data.end() && pay->contains("isVipBoolean"));
     const bool active = (user != data.end() && JsonFlag(*user, "isVip")) || (pay != data.end() && JsonFlag(*pay, "isVipBoolean"));
     if (known) profile.membership = active ? L"VIP" : L"非 VIP";
+
+    // 到期时间：活动会员在 actExpireDate，付费会员在 payExpireDate。都是毫秒时间戳。
+    if (active && pay != data.end() && pay->is_object())
+    {
+        long long expires_ms = JsonInt64(*pay, "actExpireDate");
+        if (expires_ms <= 0) expires_ms = JsonInt64(*pay, "payExpireDate");
+        if (expires_ms <= 0) expires_ms = JsonInt64(*pay, "expireDate");
+        if (expires_ms > 0)
+        {
+            const std::time_t seconds = static_cast<std::time_t>(expires_ms / 1000);
+            std::tm local{};
+            if (localtime_s(&local, &seconds) == 0)
+            {
+                wchar_t buffer[24]{};
+                if (wcsftime(buffer, _countof(buffer), L"%Y-%m-%d", &local) > 0) profile.expires = buffer;
+            }
+        }
+    }
     return profile;
+}
+
+// 从权限与音质字段推一个短语标记，界面直接显示，不做平台判断：
+//   listen_fragment 为 1 表示只能听到片段，这是最需要提前告知用户的情况；
+//   否则若资源里带无损档（level 为 ff，或格式是 flac/mflac），标「无损」。
+inline std::wstring BodianBadge(const nlohmann::json& value)
+{
+    const auto pay = value.find("payInfo");
+    if (pay != value.end() && pay->is_object())
+    {
+        const auto fragment = pay->find("listen_fragment");
+        if (fragment != pay->end())
+        {
+            const std::string flag = fragment->is_string() ? fragment->get<std::string>()
+                : fragment->is_number_integer() ? std::to_string(fragment->get<long long>()) : std::string();
+            if (flag == "1" || flag == "true") return L"试听";
+        }
+    }
+
+    const auto audios = value.find("audios");
+    if (audios != value.end() && audios->is_array())
+    {
+        for (const auto& audio : *audios)
+        {
+            const std::string level = JsonText(audio, "level");
+            const std::string format = JsonText(audio, "format");
+            if (level == "ff" || format == "flac" || format == "mflac") return L"无损";
+        }
+    }
+    return {};
 }
 
 inline Track BodianTrack(const nlohmann::json& value)
@@ -84,6 +147,7 @@ inline Track BodianTrack(const nlohmann::json& value)
     if (track.cover_url.empty()) track.cover_url = kugou::FromUtf8(JsonText(value, "albumPic120"));
     int seconds = JsonNumber(value, "duration");
     if (seconds < 2147483) track.duration_ms = seconds * 1000;
+    track.badge = BodianBadge(value);
     return track;
 }
 
@@ -121,6 +185,101 @@ inline void AddBodianPlaylist(BrowseResult& result, const nlohmann::json& value,
     const auto count = JsonText(value, "musicnum");
     if (!count.empty()) item.subtitle += L" · " + kugou::FromUtf8(count) + L" 首";
     result.items.push_back(std::move(item));
+}
+
+
+// 酷我系的双语歌词有个坑：译文行的时间标签标的是「下一句原文」的时间，
+// 而不是它自己那句。播放器按「同时间戳两行、前原文后译文」配对翻译
+// （见 CLyrics::CombineSameTimeLyric），遇到这种错位会把两者整个配反 ——
+// 译文被当原文、原文被当译文。这里把译文的时间改回它所属原文的时间。
+inline std::wstring AlignLyricTranslation(const std::wstring& lyric)
+{
+    std::vector<std::wstring> lines;
+    size_t begin = 0;
+    for (size_t i = 0; i <= lyric.size(); ++i)
+    {
+        if (i == lyric.size() || lyric[i] == L'\n')
+        {
+            std::wstring line = lyric.substr(begin, i - begin);
+            if (!line.empty() && line.back() == L'\r') line.pop_back();
+            lines.push_back(std::move(line));
+            begin = i + 1;
+        }
+    }
+    if (lines.size() < 4) return lyric;
+
+    // 解析 [mm:ss.xx] 这类时间标签，返回毫秒；不是时间行就返回 false
+    auto parse_time = [](const std::wstring& line, long long& ms, size_t& tag_len) -> bool
+    {
+        if (line.size() < 8 || line[0] != L'[') return false;
+        const size_t close = line.find(L']');
+        if (close == std::wstring::npos || close < 7) return false;
+        const std::wstring tag = line.substr(1, close - 1);
+        if (tag.size() < 7 || tag[2] != L':' || (tag[5] != L'.' && tag[5] != L':')) return false;
+        for (size_t i = 0; i < tag.size(); ++i)
+        {
+            if (i == 2 || i == 5) continue;
+            if (tag[i] < L'0' || tag[i] > L'9') return false;
+        }
+        const int mm = (tag[0] - L'0') * 10 + (tag[1] - L'0');
+        const int ss = (tag[3] - L'0') * 10 + (tag[4] - L'0');
+        int frac = 0;
+        const size_t digits = (std::min)(tag.size(), static_cast<size_t>(9)) - 6;
+        for (size_t i = 6; i < 6 + digits; ++i) frac = frac * 10 + (tag[i] - L'0');
+        const int scale[] = { 1, 100, 10, 1 };
+        ms = ((mm * 60LL) + ss) * 1000 + frac * scale[digits];
+        tag_len = close + 1;
+        return true;
+    };
+
+    std::vector<long long> times(lines.size(), -1);
+    std::vector<size_t> tag_len(lines.size(), 0);
+    for (size_t i = 0; i < lines.size(); ++i) parse_time(lines[i], times[i], tag_len[i]);
+
+    // 先判断到底是不是错位格式，是的话才动手，避免误伤正常歌词
+    int shifted = 0, normal = 0;
+    for (size_t i = 0; i + 2 < lines.size(); ++i)
+    {
+        if (times[i] < 0 || times[i + 1] < 0 || times[i + 2] < 0) continue;
+        if (times[i] == times[i + 1]) ++normal;
+        else if (times[i + 1] == times[i + 2]) ++shifted;
+    }
+    if (shifted == 0 || shifted <= normal) return lyric;
+
+    std::vector<long long> fixed = times;
+    for (size_t i = 0; i + 2 < lines.size(); ++i)
+    {
+        if (times[i] < 0 || times[i + 1] < 0 || times[i + 2] < 0) continue;
+        if (times[i] != times[i + 1] && times[i + 1] == times[i + 2]) fixed[i + 1] = times[i];
+    }
+
+    std::wstring out;
+    out.reserve(lyric.size() + 64);
+    for (size_t i = 0; i < lines.size(); ++i)
+    {
+        if (fixed[i] >= 0 && fixed[i] != times[i])
+        {
+            wchar_t tag[24]{};
+            const long long ms = fixed[i];
+            swprintf_s(tag, L"[%02lld:%02lld.%02lld]", ms / 60000, (ms / 1000) % 60, (ms % 1000) / 10);
+            out += tag;
+            out += lines[i].substr(tag_len[i]);
+        }
+        else out += lines[i];
+        if (i + 1 < lines.size()) out += L'\n';
+    }
+    return out;
+}
+
+// 酷狗的权限字段：AlbumPrivilege 为 8 表示只能试听（最该提前告知用户），
+// 为 10 是完整播放；SQ 是个对象，带 filesize，有值说明这首提供无损。
+inline std::wstring KugouBadge(const nlohmann::json& value)
+{
+    if (JsonNumber(value, "AlbumPrivilege") == 8) return L"试听";
+
+    const auto sq = value.find("SQ");
+    if (sq != value.end() && sq->is_object() && JsonInt64(*sq, "filesize") > 0) return L"无损";
+    return {};
 }
 
 inline Track KugouTrack(const nlohmann::json& value)
@@ -166,6 +325,7 @@ inline Track KugouTrack(const nlohmann::json& value)
         if (seconds == 0) seconds = JsonNumber(value, "duration");
         if (seconds < 2147483) track.duration_ms = seconds * 1000;
     }
+    track.badge = KugouBadge(value);
     return track;
 }
 
@@ -175,7 +335,10 @@ inline void AddTrack(BrowseResult& result, const Track& track)
     BrowseItem item;
     item.track = track;
     item.title = track.title;
+    // 这里只放艺术家：宽屏会在「专辑」列单独显示专辑，窄屏才把两者合并。
+    // 具体怎么拼由显示层按列宽决定，数据和呈现不在这里耦合。
     item.subtitle = track.artist;
+    item.badge = track.badge;
     result.items.push_back(std::move(item));
 }
 
