@@ -52,6 +52,7 @@ public:
     // ---- IOnlineSource ----
     std::wstring GetScheme() const override { return L"kugou"; }
     std::wstring GetDisplayName() const override { return L"酷狗概念版"; }
+    std::wstring GetShortName() const override { return L"酷狗"; }
     bool Search(const std::wstring& keyword, int page, std::vector<online::Track>& result) override;
     bool Browse(const online::BrowseRequest& request, online::BrowseResult& result) override;
     std::wstring ResolvePlayUrl(const std::wstring& virtual_path) override;
@@ -74,6 +75,8 @@ public:
 
     // 上一次解析失败的原因，可直接显示给用户
     std::wstring GetLastError() const override { return m_last_error; }
+    // 上一次取播放地址时实际用到的音质，以及更高档位为什么没拿到
+    std::wstring GetQualityNote() const override { return m_quality_note; }
 
     // ---- 扫码登录 ----
     // 登录流程：GetQrCode 拿二维码内容 -> 用户用酷狗App扫 -> 反复 CheckQrCode
@@ -90,6 +93,11 @@ public:
     void Logout();
     bool GetDailyRewardRecord(std::wstring& day, bool& received);
     bool ClaimDailyReward(const std::wstring& day);
+    // 广告奖励上报。酷狗概念版每天最多 8 次，每次换 3 小时会员，领满是 24 小时。
+    // play_start / play_end 由客户端自己填，服务端只看这两个值的差值，
+    // 所以不需要真的播放过广告。成功时回填当天剩余次数与本次奖励小时数，
+    // exhausted 表示当天次数已经用完。
+    bool ClaimAdReward(int& remain, int& award_hours, bool& exhausted);
     bool GetProfile(online::AccountProfile& profile) override;
     std::wstring GetCoverUrl(const online::Track& track) override;
 
@@ -108,11 +116,14 @@ protected:
 
     // 取歌播放地址。返回空字符串表示失败。
     std::wstring FetchPlayUrl(const std::wstring& hash, const std::wstring& album_audio_id);
+    // 只搜专辑，走 msearch 路由，返回结构与歌曲搜索不同
+    bool BrowseAlbums(const std::wstring& keyword, int page, online::BrowseResult& result);
 
     DeviceIdentity m_device;
     Account m_account;
     mutable std::mutex m_state_mutex;
     std::wstring m_last_error;      // 最近一次失败原因
+    std::wstring m_quality_note;    // 最近一次取播放地址的音质说明
     std::wstring m_qr_key;          // 当前登录二维码的 key
 };
 

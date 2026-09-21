@@ -21,6 +21,8 @@ namespace kugou
 // 接口地址
 static const wchar_t* API_BASE = L"https://gateway.kugou.com";
 static const wchar_t* ROUTER_SEARCH = L"complexsearch.kugou.com";
+// 专辑搜索不在 complexsearch 上，走 msearch；请求过去会 404
+static const wchar_t* ROUTER_MSEARCH = L"msearch.kugou.com";
 static const wchar_t* ROUTER_TRACKER = L"trackercdn.kugou.com";
 static const wchar_t* ROUTER_LYRICS = L"lyrics.kugou.com";
 
@@ -52,6 +54,7 @@ bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseRe
     using namespace online;
     result = {};
     m_last_error.clear();
+    if (request.kind == BrowseKind::AlbumSearch) return BrowseAlbums(request.id, request.page, result);
     if (request.kind == BrowseKind::Search) return IOnlineSource::Browse(request, result);
     if ((request.kind == BrowseKind::Playlists || request.kind == BrowseKind::Recommend) && !IsLoggedIn())
     {
@@ -390,6 +393,59 @@ bool CKugouSource::Search(const wstring& keyword, int page, vector<online::Track
     return !result.empty();
 }
 
+
+// 专辑搜索：单独一个路由（msearch），返回结构也和歌曲搜索不同 ——
+// 列表字段是 info 而不是 lists，命名是小写的 albumname/singername。
+// 条目里存「歌手 + 专辑名」，点进去会用它再搜一次歌曲。
+bool CKugouSource::BrowseAlbums(const wstring& keyword, int page, online::BrowseResult& result)
+{
+    using namespace online;
+    result = {};
+    m_last_error.clear();
+    if (keyword.empty()) { m_last_error = L"请输入专辑名或歌手"; return false; }
+
+    char buf[32]{};
+    sprintf_s(buf, "%lld", static_cast<long long>(time(nullptr)));
+    vector<pair<string, string>> params = {
+        { "dfid",       m_device.dfid },
+        { "mid",        m_device.mid },
+        { "uuid",       "-" },
+        { "appid",      LITE_APPID },
+        { "clientver",  LITE_CLIENTVER },
+        { "clienttime", buf },
+        { "keyword",    ToUtf8(keyword) },
+        { "page",       to_string(page < 1 ? 1 : page) },
+        { "pagesize",   "30" },
+        { "showtype",   "1" },
+    };
+
+    json response;
+    if (!Request(L"/api/v3/search/album", ROUTER_MSEARCH, params, "", response)) return false;
+    if (response.value("status", 0) != 1) { m_last_error = L"专辑搜索未返回数据"; return false; }
+    if (!response.contains("data") || !response["data"].contains("info")) return false;
+
+    for (const auto& item : response["data"]["info"])
+    {
+        const wstring name = FromUtf8(item.value("albumname", ""));
+        if (name.empty()) continue;
+        const wstring artist = FromUtf8(item.value("singername", ""));
+
+        BrowseItem album;
+        album.type = BrowseItem::Type::Album;
+        album.title = name;
+        // 曲目数是选专辑时最有用的信息，直接放在副标题里
+        const int count = item.contains("songcount") && item["songcount"].is_number()
+            ? item["songcount"].get<int>() : 0;
+        album.subtitle = artist.empty() ? L"专辑" : L"专辑 · " + artist;
+        if (count > 0) album.subtitle += L"，" + to_wstring(count) + L" 首";
+        album.id = artist.empty() ? name : artist + L" " + name;
+        result.items.push_back(std::move(album));
+    }
+    if (result.items.empty()) m_last_error = L"没有找到相关专辑";
+    result.has_more = response["data"]["info"].size() >= 30;
+    return !result.items.empty();
+}
+
 // ---------------------------------------------------------------------------
 // 取播放地址
 // ---------------------------------------------------------------------------
@@ -432,11 +488,16 @@ wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_aud
     const Account account = GetAccount();
 
     // 音质从高到低尝试。拿不到高音质时自动降级，
-    // 这样 VIP 过期或某档位无版权时仍能播。
+    // 这样 VIP 过期或某档位无版权时仍能播。把上面几档为什么没成记下来，
+    // 最后告诉用户实际用的是哪一档，而不是默默降级。
     static const char* qualities[] = { "flac", "320", "128" };
+    static const wchar_t* quality_names[] = { L"无损", L"320k", L"128k" };
+    m_quality_note.clear();
+    wstring first_failure;
 
-    for (const char* quality : qualities)
+    for (size_t qi = 0; qi < sizeof(qualities) / sizeof(qualities[0]); ++qi)
     {
+        const char* quality = qualities[qi];
         char clienttime[32]{};
         sprintf_s(clienttime, "%lld", static_cast<long long>(time(nullptr)));
 
@@ -477,8 +538,15 @@ wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_aud
         json response;
         if (!Request(L"/v5/url", ROUTER_TRACKER, params, "", response)) return {};
         auto playback = online::ParseKugouPlayback(response, account.IsLoggedIn());
-        if (!playback.url.empty()) { m_last_error.clear(); return playback.url; }
+        if (!playback.url.empty())
+        {
+            m_last_error.clear();
+            m_quality_note = qi == 0 ? wstring(L"当前播放：无损")
+                : wstring(L"当前播放：") + quality_names[qi] + (first_failure.empty() ? wstring() : L"（无损未获取到：" + first_failure + L"）");
+            return playback.url;
+        }
         m_last_error = playback.error;
+        if (first_failure.empty()) first_failure = playback.error;
         if (!playback.retry_quality) return {};
     }
 
