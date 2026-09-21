@@ -304,8 +304,10 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
         M_SIGN_IN, M_TOGGLE_SIGN_IN, M_AD_REWARD, M_TOGGLE_AD_REWARD,
         M_IMPORT_FILE, M_IMPORT_LINK, M_AUTO_SWITCH,
         M_PLAY_ALL, M_SAVE_LIST,
-        // 换源的子菜单按音源下标编号，直接映射到注册表里的顺序
-        M_SWITCH_BASE = 100, M_SWITCH_PLAYER_BASE = 120, M_SWITCH_PLAYER_NOOP_UNAVAILABLE = 119
+        // 换源的子菜单按音源下标编号，两个基址之间要留够间距：
+        // 原来 M_SWITCH_PLAYER_BASE=120 落在 [100, 100+音源数) 区间里，
+        // 音源一多就会被当成「就地换源」派发出去。
+        M_SWITCH_BASE = 100, M_SWITCH_PLAYER_BASE = 200, M_SWITCH_PLAYER_NOOP_UNAVAILABLE = 199
     };
     const std::pair<UINT, Model::Action> commands[] = {
         {M_PLAY, Model::Action::Play}, {M_PLAY_NEXT, Model::Action::PlayNext}, {M_QUEUE, Model::Action::Queue},
@@ -467,7 +469,12 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
 }
 void OnlineMusicList::ShowMenu(bool full)
 {
-    ShowStandardMenu(full, true);
+    if (!m_state) return;
+    // 只有选中歌曲行时才给歌曲那一组。选中的是专辑/歌单/榜单行时按歌曲行给菜单，
+    // 用户只会看到一片灰掉的歌曲动作、连「打开专辑」都出不来。
+    // 没有选中（工具栏直接点开）时维持原样，菜单里至少还有一组动作。
+    std::vector<int> rows; GetItemsSelected(rows);
+    ShowStandardMenu(full, rows.empty() ? true : IsSongRow(rows.front()));
 }
 bool OnlineMusicList::RButtonUp(CPoint point)
 {
@@ -629,7 +636,12 @@ void OnlineMusic::ShowImportMenu()
     menu.AppendMenuW(MF_STRING, 1, L"从本地歌单文件导入…");
     menu.AppendMenuW(MF_STRING, 2, L"从外部平台 歌单链接导入…");
     CPoint point; GetCursorPos(&point);
-    const UINT value = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, ui->GetOwner());
+    // 和 ShowStandardMenu 一样先把自己设为前台：否则点菜单外面它不会收起。
+    CWnd* owner = ui != nullptr ? ui->GetOwner() : nullptr;
+    if (owner == nullptr) owner = AfxGetMainWnd();
+    if (owner != nullptr) owner->SetForegroundWindow();
+    const UINT value = menu.TrackPopupMenu(TPM_LEFTALIGN | TPM_RETURNCMD | TPM_RIGHTBUTTON,
+        point.x, point.y, owner);
     if (value == 1) m_list->Dispatch(Model::Action::Import);
     else if (value == 2) Model::Instance().Post({Model::Action::ImportExternal});
 }

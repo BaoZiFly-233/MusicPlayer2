@@ -26,6 +26,9 @@
 using namespace std;
 using namespace online;
 
+// 扫码轮询连续失败多少次才判定登录流程彻底失败（每次间隔 2 秒）
+static constexpr int LOGIN_POLL_FAILURE_LIMIT = 5;
+
 namespace
 {
 wstring BrowseTitle(BrowseKind kind)
@@ -112,7 +115,9 @@ void COnlineMusicModel::Initialize(CWnd* owner)
 }
 void COnlineMusicModel::Publish(bool rows_changed, bool reset_selection)
 {
-    m_state.busy = m_task != nullptr;
+    // 浏览任务和歌单任务（导入/换源）都算忙：原来只算前者，歌单任务跑着的时候
+    // 界面上「清空本地歌单」「保存为原生播放列表」这些还是可点的。
+    m_state.busy = m_task != nullptr || m_library_task != nullptr;
     if (rows_changed)
     {
         if (reset_selection) ++m_state.revision;
@@ -351,6 +356,7 @@ void COnlineMusicModel::ResetLogin()
     if (m_login_progress) m_login_progress->Finish(ProgressResult::Cancelled, L"扫码登录已取消");
     m_login_progress.reset();
     m_login_poll_at = 0; m_login_source.reset(); m_state.qr_pixels.clear(); m_state.qr_size = 0;
+    m_login_failures = 0;
 }
 void COnlineMusicModel::Suspend()
 {
@@ -817,6 +823,16 @@ void COnlineMusicModel::CompleteTask(shared_ptr<Task> task)
     }
     if (!task->success)
     {
+        // 扫码轮询里的失败多半只是网络抖动：CheckQrCode 把超时、连不上、响应格式异常
+        // 一律算成 Failed，直接 ResetLogin 会把用户刚扫完的会话一起丢掉。
+        // 连着错几次才当真的失败，中间继续按 2 秒一次重试。
+        if (task->login_action == 2 && ++m_login_failures <= LOGIN_POLL_FAILURE_LIMIT)
+        {
+            m_login_poll_at = GetTickCount64() + 2000;
+            if (task->progress) task->progress->Update(L"暂时联系不上服务端，正在重试");
+            Publish();
+            return;
+        }
         const wstring error = task->error.empty() ? L"没有可用结果，请刷新重试。" : task->error;
         if (task->progress) task->progress->Finish(ProgressResult::Failed, error);
         if (task->login_action) ResetLogin();
@@ -933,6 +949,8 @@ void COnlineMusicModel::CompleteTask(shared_ptr<Task> task)
             }
             else
             {
+                // 这一次问到了状态，连续失败计数清零
+                m_login_failures = 0;
                 m_login_poll_at = GetTickCount64() + 2000;
                 if (status == kugou::CKugouSource::QrStatus::Scanned) m_state.status = L"已扫码，请在手机上确认。";
                 if (task->progress) task->progress->Update(status == kugou::CKugouSource::QrStatus::Scanned

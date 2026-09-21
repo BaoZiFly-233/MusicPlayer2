@@ -215,6 +215,7 @@ private:
     std::shared_ptr<online::OnlineProgress> m_login_progress;
     std::shared_ptr<online::IOnlineSource> m_login_source;
     ULONGLONG m_login_poll_at{};
+    int m_login_failures{};   // 扫码轮询连续失败次数，用来区分网络抖动和真的失败
     ULONGLONG m_service_refresh_at{};
     ULONGLONG m_notice_until{};
     bool m_cache_view{};
