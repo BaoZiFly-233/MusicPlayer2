@@ -104,7 +104,18 @@ wstring ListItem::GetDisplayName() const
             return theApp.m_str_table.LoadText(L"TXT_PLAYLIST_NAME_FAVOURITE");
         if (CRecentList::IsSpecPlaylist(*this, CRecentList::PT_TEMP))
             return theApp.m_str_table.LoadText(L"TXT_PLAYLIST_NAME_TEMP");
-        return CFilePathHelper(path).GetFileNameWithoutExtension();
+        {
+            const wstring name = CFilePathHelper(path).GetFileNameWithoutExtension();
+            const wstring dir = CFilePathHelper(path).GetDir();
+            const wstring& root = theApp.m_playlist_dir;
+            if (dir.size() > root.size() && _wcsnicmp(dir.c_str(), root.c_str(), root.size()) == 0)
+            {
+                wstring group = dir.substr(root.size());
+                while (!group.empty() && (group.back() == L'\\' || group.back() == L'/')) group.pop_back();
+                if (!group.empty()) return group + L" / " + name;
+            }
+            return name;
+        }
     case LT_MEDIA_LIB:
         if (medialib_type == ClassificationType::CT_NONE)   // 所有曲目
             return theApp.m_str_table.LoadText(L"TXT_ALL_TRACKS");

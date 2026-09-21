@@ -2,6 +2,24 @@
 #include "CRecentList.h"
 #include "MusicPlayer2.h"
 #include "FilePathHelper.h"
+#include <filesystem>
+
+namespace
+{
+// 播放列表在 playlist 目录下的相对路径。支持子目录后，最近列表也必须保存相对路径，
+// 否则重新启动后会全部拍平到根目录。
+wstring PlaylistRelativePath(const wstring& path, bool with_extension)
+{
+    const wstring& root = theApp.m_playlist_dir;
+    wstring relative = path;
+    if (path.size() >= root.size() && _wcsnicmp(path.c_str(), root.c_str(), root.size()) == 0)
+        relative = path.substr(root.size());
+    else
+        relative = CFilePathHelper(path).GetFileName();
+    if (!with_extension) relative = CFilePathHelper(relative).GetFilePathWithoutExtension();
+    return relative;
+}
+}
 
 CRecentList CRecentList::m_instance;
 
@@ -242,7 +260,7 @@ void CRecentList::SaveData() const
     {
         ar << static_cast<int>(item.type);
         if (item.type == LT_PLAYLIST)
-            ar << CString(CFilePathHelper(item.path).GetFileNameWithoutExtension().c_str());
+            ar << CString(PlaylistRelativePath(item.path, false).c_str());
         else
             ar << CString(item.path.c_str());
         ar << static_cast<int>(item.sort_mode)
@@ -336,16 +354,34 @@ bool CRecentList::LoadData()
 
 void CRecentList::AfterLoadData()
 {
-    // 获取playlist目录下的播放列表文件
+    // 获取 playlist 目录下的播放列表文件（含子目录，用于“语种/分组”目录管理）
     vector<wstring> file_list;
-    CCommon::GetFiles(theApp.m_playlist_dir + L'*' + PLAYLIST_EXTENSION, file_list);
+    {
+        std::error_code error;
+        const std::filesystem::path root(theApp.m_playlist_dir);
+        for (std::filesystem::recursive_directory_iterator it(root, error), end; it != end; it.increment(error))
+        {
+            if (error) break;
+            if (!it->is_regular_file(error)) continue;
+            std::wstring extension = it->path().extension().wstring();
+            std::transform(extension.begin(), extension.end(), extension.begin(), towlower);
+            if (extension != PLAYLIST_EXTENSION) continue;
+            file_list.push_back(it->path().lexically_relative(root).wstring());
+        }
+    }
     // 移除不符合条件的项目
     m_list.remove_if([&](const ListItem& list_item) -> bool
         {
             switch (list_item.type)
             {
             case LT_FOLDER: return list_item.path.size() < 2;
-            case LT_PLAYLIST: return std::find(file_list.begin(), file_list.end(), CFilePathHelper(list_item.path).GetFileName()) == file_list.end();
+            case LT_PLAYLIST:
+            {
+                const wstring relative = PlaylistRelativePath(list_item.path, true);
+                return std::none_of(file_list.begin(), file_list.end(), [&](const wstring& file) {
+                    return _wcsicmp(file.c_str(), relative.c_str()) == 0;
+                });
+            }
             case LT_MEDIA_LIB: return list_item.medialib_type < ListItem::ClassificationType() || list_item.medialib_type >= ListItem::ClassificationType::CT_MAX;
             default: return true;
             }
