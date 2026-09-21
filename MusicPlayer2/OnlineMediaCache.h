@@ -14,6 +14,8 @@ public:
     void Configure(const std::wstring& config_dir);
     void Shutdown();
     std::wstring FindAudio(const std::wstring& path) const;
+    // 无损缓存（flac/wav）可以直接复用；有损缓存不应该把音质永久锁在低档。
+    static bool IsLossless(const std::wstring& path);
     std::wstring FindLyric(const std::wstring& path) const;
     std::wstring FindCover(const std::wstring& path) const;
     void PrefetchNext(const std::wstring& path);
@@ -30,8 +32,11 @@ public:
 private:
     struct Work;
     struct State;
+    // 队列编号：0 音频、1 歌词、2 封面。三者各自一个工作线程，
+    // 封面下载不再挡住歌词，歌词也不再挡住封面。
+    enum class Queue { Audio, Lyric, Cover };
     std::shared_ptr<State> m_state;
-    static void Run(const std::shared_ptr<State>& state, bool lyrics);
+    static void Run(const std::shared_ptr<State>& state, Queue queue);
     static void Process(const std::shared_ptr<State>& state, const Work& work);
     static void Trim(const std::shared_ptr<State>& state);
 };
