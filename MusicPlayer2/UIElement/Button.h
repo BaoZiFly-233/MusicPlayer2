@@ -38,6 +38,7 @@ namespace UiElement
         virtual void HideTooltip() override;
         virtual bool SetCursor() override;
 
+        void SetShowText(bool show) { show_text = show; }
         void SetClickedTrigger(std::function<void(Button*)> func);
 
         virtual void FromXmlNode(tinyxml2::XMLElement* xml_node);

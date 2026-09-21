@@ -89,6 +89,7 @@ public:
         PropertyCoverMenu,                  // 属性对话框->专辑封面标签页
         FindListMenu,                       // 查找-查找列表右键菜单
         SongMultiVersionMenu,               // 播放列表"多个版本"菜单
+        OnlineSwitchSourceMenu,             // 播放列表右键->"换源到…"子菜单（每个在线音源一项）
 
         MenuMax // 菜单数量
     };

@@ -156,6 +156,7 @@ namespace UiElement
             ELEMENT_SWITCHER,
             TEXT,
             TEXT_BLOCK,
+            ONLINE_LIST,        // 在线音乐列表的行提示与悬停按钮提示
             INDEX_MAX,
         };
     }

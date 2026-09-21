@@ -994,6 +994,8 @@
 #define ID_SLOW_DOWN                    33143
 #define ID_ORIGINAL_SPEED               33144
 #define ID_ADD_TO_NEW_PLAYLIST_AND_PLAY 33145
+// 换源到…：媒体库播放列表右键菜单里的子菜单，每一项对应一个在线音源
+#define ID_ONLINE_SWITCH_SOURCE_START   40000
 #define ID_PLAY_ITEM_IN_FOLDER_MODE     33147
 #define ID_COPY_TEXT                    33148
 #define ID_ALWAYS_SHOW_STATUS_BAR       33149

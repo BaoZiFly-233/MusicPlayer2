@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "MusicPlayer2.h"
 #include "MenuMgr.h"
+#include "OnlineSource.h"
 #include "WinVersionHelper.h"
 
 
@@ -56,12 +57,14 @@ public:
         m_menu.InsertMenuItemW(m_end_pos++, &mii, TRUE);
     }
 
-    void AppendSubMenu(MenuMgr::MenuType sub_menu_type, IconMgr::IconType icon_type = IconMgr::IT_NO_ICON)
+    void AppendSubMenu(MenuMgr::MenuType sub_menu_type, IconMgr::IconType icon_type = IconMgr::IT_NO_ICON, const wchar_t* text = nullptr)
     {
         MENUITEMINFO mii = { sizeof(mii) };
         mii.fMask = MIIM_STRING | MIIM_SUBMENU | MIIM_FTYPE;
         mii.hSubMenu = m_pMenuMgr->GetSafeHmenu(sub_menu_type);
-        wstring menu_text = theApp.m_str_table.LoadMenuText(MenuMgr::GetMenuNameStr(m_menu_type), MenuMgr::GetMenuNameStr(sub_menu_type));
+        // text 不为空时直接用参数的正文：给那种菜单项按运行时数据生成、语言文件里没有条目的子菜单用
+        wstring menu_text = text != nullptr ? wstring(text)
+            : theApp.m_str_table.LoadMenuText(MenuMgr::GetMenuNameStr(m_menu_type), MenuMgr::GetMenuNameStr(sub_menu_type));
         mii.dwTypeData = const_cast<LPWSTR>(menu_text.c_str());
 #ifndef COMPILE_IN_WIN_XP
         if (!CWinVersionHelper::IsWine())
@@ -295,6 +298,8 @@ const wchar_t* MenuMgr::GetMenuNameStr(MenuMgr::MenuType menu_type)
         return L"LIB_RIGHT";
     case MenuMgr::UiRecentPlayedMenu: case MenuMgr::FindListMenu: case MenuMgr::RecentPlayedMenu:
         return L"UI_RECENT_PLAYED";
+    case MenuMgr::OnlineSwitchSourceMenu:
+        return L"ONLINE_SWITCH_SOURCE";
     case MenuMgr::LibPlaylistSortMenu:
         return L"LIB_PLAYLIST_SORT";
     case MenuMgr::LibFolderSortMenu:
@@ -705,6 +710,9 @@ void MenuMgr::CreateMenu(MenuBase& menu)
         menu.SetDefaultItem();
         menu.AppendItem(EX_ID(ID_PLAY_AS_NEXT), IconMgr::IconType::IT_Play_As_Next);
         menu.AppendSeparator();
+        // 单曲换源：把选中的这首重新在另一个平台上找一遍，地址就地替换，不用另存歌单
+        menu.AppendSubMenu(OnlineSwitchSourceMenu, IconMgr::IconType::IT_Online, L"换源到…（改这首的来源）");
+        menu.AppendSeparator();
         menu.AppendItem(EX_ID(ID_EXPLORE_ONLINE), IconMgr::IconType::IT_Online);
         menu.AppendItem(EX_ID(ID_FORMAT_CONVERT), IconMgr::IconType::IT_Convert);
         menu.AppendSubMenu(RateMenu, IconMgr::IconType::IT_Star);
@@ -813,12 +821,26 @@ void MenuMgr::CreateMenu(MenuBase& menu)
         menu.AppendItem(EX_ID(ID_SAVE_AS_NEW_PLAYLIST), IconMgr::IconType::IT_Save);
         menu.AppendItem(EX_ID(ID_PLAYLIST_SAVE_AS), IconMgr::IconType::IT_Save_As);
         menu.AppendSeparator();
+        // 换源：把这份歌单里的在线曲目重新匹配到另一个平台（导入进来的歌单主要用这个）
+        menu.AppendSubMenu(OnlineSwitchSourceMenu, IconMgr::IconType::IT_Online, L"换源到…");
+        menu.AppendSeparator();
         menu.AppendItem(EX_ID(ID_PLAYLIST_BROWSE_FILE), IconMgr::IconType::IT_Folder_Explore);
         menu.AppendItem(EX_ID(ID_PLAYLIST_FIX_PATH_ERROR), IconMgr::IconType::IT_Fix);
         menu.AppendSeparator();
         menu.AppendItem(EX_ID(ID_NEW_PLAYLIST), IconMgr::IconType::IT_Add);
         menu.AppendItem(EX_ID(ID_LIB_PLAYLIST_PROPERTIES), IconMgr::IconType::IT_Info);
         break;
+    case MenuMgr::OnlineSwitchSourceMenu:
+    {
+        // 每个在线音源一项，命令编号从 ID_ONLINE_SWITCH_SOURCE_START 往后排。
+        // 菜单是首次取用时才构建的，那时音源已经注册好了。
+        menu.CreateMenu(true, false);
+        const auto& sources = online::CSourceRegistry::Instance().GetAll();
+        for (size_t i = 0; i < sources.size(); ++i)
+            menu.AppendItem(static_cast<UINT>(ID_ONLINE_SWITCH_SOURCE_START + i), wstring(),
+                IconMgr::IconType::IT_Online, sources[i]->GetDisplayName().c_str());
+        break;
+    }
     case MenuMgr::LibLeftMenu:
         menu.CreateMenu(true, false);
         menu.AppendItem(EX_ID(ID_PLAY_ITEM), IconMgr::IconType::IT_Play);
@@ -849,6 +871,8 @@ void MenuMgr::CreateMenu(MenuBase& menu)
         break;
     case MenuMgr::LibPlaylistRightMenu:
         menu.CreateMenu(true, false);
+        menu.AppendSubMenu(OnlineSwitchSourceMenu, IconMgr::IconType::IT_Online, L"换源到…");
+        menu.AppendSeparator();
         menu.AppendItem(EX_ID(ID_PLAY_ITEM), IconMgr::IconType::IT_Play);
         menu.SetDefaultItem();
         menu.AppendItem(EX_ID(ID_PLAY_AS_NEXT), IconMgr::IconType::IT_Play_As_Next);
