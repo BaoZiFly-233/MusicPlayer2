@@ -11,7 +11,9 @@ on:
 
 jobs:
   build-x64:
-    runs-on: windows-latest
+    # 固定 windows-2022：windows-latest 现在给的是 VS 18（v170 目标 + 14.44 工具集），
+    # 下面那份组件清单是按 VS2022 写的，在新镜像上装完仍然缺 MFC，构建会挂在 MSB8041。
+    runs-on: windows-2022
     steps:
       - name: Check Out
         uses: actions/checkout@v4
@@ -58,7 +60,9 @@ jobs:
           name: MusicPlayer2.x64.other
           path: ./MusicPlayer2.x64.other.7z
   build-x86:
-    runs-on: windows-latest
+    # 固定 windows-2022：windows-latest 现在给的是 VS 18（v170 目标 + 14.44 工具集），
+    # 下面那份组件清单是按 VS2022 写的，在新镜像上装完仍然缺 MFC，构建会挂在 MSB8041。
+    runs-on: windows-2022
     steps:
       - name: Check Out
         uses: actions/checkout@v4
