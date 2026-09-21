@@ -1,2 +1,10 @@
 MusicPlayer2/MusicPlayer2.rc text working-tree-encoding=UTF-16LE-BOM eol=CRLF
 scintilla/win32/ScintRes.rc text working-tree-encoding=UTF-16LE-BOM eol=CRLF
+
+# Windows 批处理：cmd 只用 CRLF 分行，存成 LF 会把标签、代码块解析成一串野命令
+*.bat text eol=crlf
+*.cmd text eol=crlf
+# Shell 脚本反过来：换行里有 CR 时 bash 会把 \r 当成命令的一部分
+*.sh text eol=lf
+# 一并记住 clean-build.sh 是纯 LF 的 bash 脚本，别让 core.autocrlf 在检出时改它
+scripts/clean-build.sh text eol=lf

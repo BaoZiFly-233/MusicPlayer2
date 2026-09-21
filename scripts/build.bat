@@ -1,17 +1,18 @@
 @echo off
-rem 构建 BoTapMusic（MusicPlayer2.sln）。
+rem Build BoTapMusic (MusicPlayer2.sln).
 rem
-rem 用法（在仓库根目录或任意位置都可以，脚本自己会切到仓库根）：
-rem   scripts\build.bat                  REM Release x86（已验证的构建目标）
-rem   scripts\build.bat Debug            REM 只给配置，平台默认 x86
+rem Usage (run from anywhere; the script switches to the repo root by itself):
+rem   scripts\build.bat                 Release x86 (default, the verified target)
+rem   scripts\build.bat Debug           config only, platform defaults to x86
 rem   scripts\build.bat Release x64
 rem
-rem MSVC 按这个顺序找：
-rem   1. 环境变量 VSINSTALL（或 VSBUILDTOOLS），想指定就用它
-rem   2. vswhere，装过 Visual Studio Installer 就有
-rem   3. D:\VSBuildTools，本机那套生成工具没注册到 vswhere，只能写死兜底
+rem MSVC is located in this order:
+rem   1. VSINSTALL (or VSBUILDTOOLS) environment variable - set it to override
+rem   2. vswhere.exe - available when the Visual Studio Installer is installed
+rem   3. D:\VSBuildTools - the build tools on this machine, not registered with vswhere
 rem
-rem 清理中间产物是另一件事：bash scripts/clean-build.sh
+rem Cleaning intermediate files is a separate job: bash scripts/clean-build.sh
+rem Note: this file must keep CRLF line endings, cmd cannot parse it with LF alone.
 
 setlocal
 
@@ -23,19 +24,19 @@ if "%PLATFORM%"=="" set "PLATFORM=x86"
 pushd "%~dp0.."
 set "ROOT=%CD%"
 
-set "VSINSTALL=%VSINSTALL%"
-if "%VSINSTALL%"=="" set "VSINSTALL=%VSBUILDTOOLS%"
-if not "%VSINSTALL%"=="" goto :have_vs
+set "VS_DIR=%VSINSTALL%"
+if "%VS_DIR%"=="" set "VS_DIR=%VSBUILDTOOLS%"
+if not "%VS_DIR%"=="" goto have_vs
 
 set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
-if exist "%VSWHERE%" (
-    for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -property installationPath`) do set "VSINSTALL=%%i"
-)
-if not "%VSINSTALL%"=="" goto :have_vs
+if not exist "%VSWHERE%" goto try_default
+for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -property installationPath`) do set "VS_DIR=%%i"
+if not "%VS_DIR%"=="" goto have_vs
 
-if exist "D:\VSBuildTools\VC\Auxiliary\Build\vcvarsall.bat" set "VSINSTALL=D:\VSBuildTools"
-if "%VSINSTALL%"=="" (
-    echo 找不到 MSVC。请先设置 VSINSTALL 指向 VS 或生成工具的安装目录，例如：
+:try_default
+if exist "D:\VSBuildTools\VC\Auxiliary\Build\vcvarsall.bat" set "VS_DIR=D:\VSBuildTools"
+if "%VS_DIR%"=="" (
+    echo Cannot find MSVC. Set VSINSTALL to the VS / build tools directory, for example:
     echo     set VSINSTALL=D:\VSBuildTools
     echo     scripts\build.bat
     popd
@@ -43,33 +44,33 @@ if "%VSINSTALL%"=="" (
 )
 
 :have_vs
-set "VCVARS=%VSINSTALL%\VC\Auxiliary\Build\vcvarsall.bat"
-set "MSBUILD=%VSINSTALL%\MSBuild\Current\Bin\MSBuild.exe"
-if not exist "%MSBUILD%" set "MSBUILD=%VSINSTALL%\MSBuild\Current\Bin\amd64\MSBuild.exe"
+set "VCVARS=%VS_DIR%\VC\Auxiliary\Build\vcvarsall.bat"
+set "MSBUILD_EXE=%VS_DIR%\MSBuild\Current\Bin\MSBuild.exe"
+if not exist "%MSBUILD_EXE%" set "MSBUILD_EXE=%VS_DIR%\MSBuild\Current\Bin\amd64\MSBuild.exe"
 if not exist "%VCVARS%" (
-    echo %VSINSTALL% 里没有 VC\Auxiliary\Build\vcvarsall.bat，不像 VS 的安装目录。
+    echo No VC\Auxiliary\Build\vcvarsall.bat under %VS_DIR% - does not look like a VS install dir.
     popd
     exit /b 1
 )
-if not exist "%MSBUILD%" (
-    echo 找不到 MSBuild.exe：%MSBUILD%
+if not exist "%MSBUILD_EXE%" (
+    echo MSBuild.exe not found: %MSBUILD_EXE%
     popd
     exit /b 1
 )
 
-echo 使用 %VSINSTALL%
-echo 构建 %CONFIG% %PLATFORM% ...
+echo Using %VS_DIR%
+echo Building %CONFIG% %PLATFORM% ...
 call "%VCVARS%" %PLATFORM%
-"%MSBUILD%" MusicPlayer2.sln /p:Configuration=%CONFIG% /p:Platform=%PLATFORM% /m /nologo /v:m
+"%MSBUILD_EXE%" MusicPlayer2.sln /p:Configuration=%CONFIG% /p:Platform=%PLATFORM% /m /nologo /v:m
 if errorlevel 1 (
     echo.
-    echo 编译失败。如果报错是 LNK1104，多半是播放器正在运行（单实例），关掉再来一次。
+    echo Build FAILED. If the error is LNK1104, the player is probably running ^(single instance^) - close it and retry.
     popd
     exit /b 1
 )
 
 if /i "%PLATFORM%"=="x64" (set "OUT=x64\%CONFIG%") else (set "OUT=%CONFIG%")
 echo.
-echo 完成：%ROOT%\%OUT%\MusicPlayer2.exe
+echo Done: %ROOT%\%OUT%\MusicPlayer2.exe
 popd
 endlocal
