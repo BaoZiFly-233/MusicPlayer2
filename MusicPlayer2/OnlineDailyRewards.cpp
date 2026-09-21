@@ -18,7 +18,7 @@ using namespace std;
 bool kugou::CKugouSource::GetDailyRewardRecord(wstring& day, bool& received)
 {
     m_last_error.clear(); received = false; day.clear();
-    if (!IsLoggedIn()) { m_last_error = L"请先登录酷狗概念版"; return false; }
+    if (!IsLoggedIn()) { m_last_error = L"请先登录K源"; return false; }
     nlohmann::json response;
     if (!Request(L"/youth/v1/activity/get_month_vip_record", L"",
         {{"appid", "3116"}, {"clientver", "11440"}, {"mid", m_device.mid}, {"dfid", m_device.dfid},
@@ -52,7 +52,7 @@ bool kugou::CKugouSource::ClaimDailyReward(const wstring& day)
 // 广告奖励上报
 // ---------------------------------------------------------------------------
 
-// 酷狗概念版的广告奖励：每天最多 8 次，每次上报一次「广告看完了」。
+// K源的广告奖励：每天最多 8 次，每次上报一次「广告看完了」。
 // 服务端只按 play_start / play_end 的差值判断，这两个值由客户端提供，
 // 所以不需要真的播放广告。
 static constexpr long long AD_REWARD_ID = 12307537187;   // 广告位编号
@@ -66,7 +66,7 @@ bool kugou::CKugouSource::ClaimAdReward(int& remain, int& award_hours, bool& exh
 {
     remain = -1; award_hours = 0; exhausted = false;
     m_last_error.clear();
-    if (!IsLoggedIn()) { m_last_error = L"请先登录酷狗概念版"; return false; }
+    if (!IsLoggedIn()) { m_last_error = L"请先登录K源"; return false; }
 
     // 时间戳用毫秒；play_start 往前推 30 秒，与服务端期望的观看时长对齐
     const long long now = static_cast<long long>(time(nullptr)) * 1000;
@@ -148,14 +148,14 @@ void COnlineDailyRewards::Request(bool automatic)
     if (state->busy || state->stopping) return;
     if (!kg || !kg->IsLoggedIn())
     {
-        state->status = L"请先登录酷狗概念版";
-        if (!automatic) OnlineProgress::Start(L"酷狗会员与签到")->Finish(ProgressResult::Failed, state->status);
+        state->status = L"请先登录K源";
+        if (!automatic) OnlineProgress::Start(L"K源会员与签到")->Finish(ProgressResult::Failed, state->status);
         return;
     }
     auto source = make_shared<kugou::CKugouSource>(*kg);
     const unsigned generation = state->generation;
     state->busy = true; state->status = L"正在检查当天会员领取记录…";
-    auto progress = OnlineProgress::Start(L"酷狗会员与签到", state->status, automatic);
+    auto progress = OnlineProgress::Start(L"K源会员与签到", state->status, automatic);
     try
     {
         thread([state, source, automatic, generation, progress] {
@@ -248,7 +248,7 @@ void COnlineDailyRewards::CancelPending()
 }
 
 // ---------------------------------------------------------------------------
-// 波点：看广告领会员
+// B源：看广告领会员
 // ---------------------------------------------------------------------------
 
 struct CBodianAdRewards::State
@@ -294,7 +294,7 @@ void CBodianAdRewards::Request(bool automatic)
     if (state->busy || state->stopping) return;
     state->busy = true;
     state->status = automatic ? L"正在自动观看广告领取会员畅听…" : L"正在观看广告领取会员畅听…";
-    auto progress = OnlineProgress::Start(L"波点会员与签到", L"正在检查会员权益", automatic);
+    auto progress = OnlineProgress::Start(L"B源会员与签到", L"正在检查会员权益", automatic);
     try
     {
         thread([state, automatic, settings = m_settings_path, progress] {
@@ -366,9 +366,9 @@ void CBodianAdRewards::Request(bool automatic)
 
 wstring CBodianAdRewards::Describe() const
 {
-    if (!m_state) return L"波点看广告领会员尚未初始化";
+    if (!m_state) return L"B源看广告领会员尚未初始化";
     lock_guard<mutex> guard(m_state->lock);
-    wstring text = wstring(L"波点自动观看广告领会员：") + (bodian::AdRewardEnabled() ? L"已开启" : L"已关闭");
+    wstring text = wstring(L"B源自动观看广告领会员：") + (bodian::AdRewardEnabled() ? L"已开启" : L"已关闭");
     const int remain = bodian::AdFreeRemainSeconds();
     text += remain > 0 ? L"\n会员畅听剩余 " + to_wstring(remain / 60 + 1) + L" 分钟" : L"\n当前没有有效的会员畅听";
     return text + L"\n" + m_state->status;

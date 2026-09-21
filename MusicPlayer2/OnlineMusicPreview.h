@@ -166,7 +166,7 @@ public:
             }
             case 2:
             {
-                auto progress = start_progress(L"扫码登录 · 酷狗", L"二维码已就绪，等待手机扫码确认");
+                auto progress = start_progress(L"扫码登录 · K源", L"二维码已就绪，等待手机扫码确认");
                 break;
             }
             case 3:
@@ -184,7 +184,7 @@ public:
             }
             case 6:
             {
-                auto progress = start_progress(L"换源到波点", L"正在匹配：第 37 首", false, true);
+                auto progress = start_progress(L"换源到B源", L"正在匹配：第 37 首", false, true);
                 progress->Update(L"正在匹配：第 37 首", 37, 100);
                 start_progress(L"导入外部歌单", L"等待网络任务", true, true, true);
                 auto failed = start_progress(L"读取歌词", L"平台没有这首歌词", true, false);
@@ -254,7 +254,7 @@ public:
             success &= SUCCEEDED(canvas.Save((directory + test.file).c_str()));
         }
         reset_progress();
-        auto library_progress = start_progress(L"换源到波点", L"正在匹配：晚风与海");
+        auto library_progress = start_progress(L"换源到B源", L"正在匹配：晚风与海");
         library_progress->Update(L"正在匹配：晚风与海", 7, 20);
         const auto old_config_path = theApp.m_config_path;
         theApp.m_config_path = directory + L"native-preview.ini";

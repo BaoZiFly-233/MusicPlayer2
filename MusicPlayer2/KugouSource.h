@@ -6,7 +6,7 @@
 #include "OnlineSource.h"
 #include "nlohmann/json.hpp"
 
-// 酷狗概念版音源。
+// K源音源。
 //
 // 说明几件重要的事：
 //   * 概念版的 appid/clientver/salt 与标准版完全不同，token 也不通用
@@ -51,8 +51,8 @@ public:
 
     // ---- IOnlineSource ----
     std::wstring GetScheme() const override { return L"kugou"; }
-    std::wstring GetDisplayName() const override { return L"酷狗概念版"; }
-    std::wstring GetShortName() const override { return L"酷狗"; }
+    std::wstring GetDisplayName() const override { return L"K源"; }
+    std::wstring GetShortName() const override { return L"K源"; }
     bool Search(const std::wstring& keyword, int page, std::vector<online::Track>& result) override;
     bool Browse(const online::BrowseRequest& request, online::BrowseResult& result) override;
     std::wstring ResolvePlayUrl(const std::wstring& virtual_path) override;
@@ -79,7 +79,7 @@ public:
     std::wstring GetQualityNote() const override { return m_quality_note; }
 
     // ---- 扫码登录 ----
-    // 登录流程：GetQrCode 拿二维码内容 -> 用户用酷狗App扫 -> 反复 CheckQrCode
+    // 登录流程：GetQrCode 拿二维码内容 -> 用户用K源App扫 -> 反复 CheckQrCode
     // 直到返回已授权，此时账号信息会写进 m_account。
     using QrStatus = online::QrStatus;
 
@@ -93,7 +93,7 @@ public:
     void Logout();
     bool GetDailyRewardRecord(std::wstring& day, bool& received);
     bool ClaimDailyReward(const std::wstring& day);
-    // 广告奖励上报。酷狗概念版每天最多 8 次，每次换 3 小时会员，领满是 24 小时。
+    // 广告奖励上报。K源每天最多 8 次，每次换 3 小时会员，领满是 24 小时。
     // play_start / play_end 由客户端自己填，服务端只看这两个值的差值，
     // 所以不需要真的播放过广告。成功时回填当天剩余次数与本次奖励小时数，
     // exhausted 表示当天次数已经用完。

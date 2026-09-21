@@ -93,10 +93,10 @@ public:
     // 本音源负责的虚拟路径 scheme，返回小写、不含 "://"，例如 L"kugou"
     virtual std::wstring GetScheme() const = 0;
 
-    // 界面上显示的音源名称，例如 L"酷狗概念版"
+    // 界面上显示的音源名称，例如 L"K源"
     virtual std::wstring GetDisplayName() const = 0;
 
-    // 列表里给每一行标来源用的短名，例如 L"酷狗"、L"波点"。默认取全名，
+    // 列表里给每一行标来源用的短名，例如 L"K源"、L"B源"。默认取全名，
     // 音源自己觉得名字太长就重写它。用来把本地文件和两个平台严格分开显示。
     virtual std::wstring GetShortName() const { return GetDisplayName(); }
 

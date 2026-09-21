@@ -52,7 +52,7 @@ wstring StripBrackets(const wstring& text)
     return result;
 }
 
-// 把歌手名拆成单个歌手。网易云用「/」、波点用「&」，还有中文顿号等。
+// 把歌手名拆成单个歌手。外部平台用「/」、B源用「&」，还有中文顿号等。
 // 必须拆开两两比较：同一歌手的写法可能一个是中文名一个是外文名，整串比会把正确结果误杀。
 vector<wstring> SplitArtists(const wstring& artist)
 {
@@ -390,7 +390,7 @@ wstring ResolveRedirect(const wstring& url, wstring& error)
     return wstring(location);
 }
 
-// 网易云：先取歌单详情拿到完整 id 列表，再分批补全歌曲信息。
+// 外部平台：先取歌单详情拿到完整 id 列表，再分批补全歌曲信息。
 // 注意普通歌单的 tracks 字段只给 10 首（是固定上限，不是版权过滤），只能信 trackIds。
 bool FetchNetease(const wstring& id, vector<ImportTrack>& tracks, wstring& error,
     const function<bool()>& cancelled, wstring* playlist_name)

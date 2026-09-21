@@ -273,7 +273,7 @@
               <toggleSettingGroup id="onlinePrefetch" height="64" margin-top="4" icon="next" mainText="预缓存下一首" subText="提前下载下一首，减少等待；缓存上限 1 GiB"/>
               <toggleSettingGroup id="onlineAutoLyrics" height="60" margin-top="4" icon="lyric" mainText="自动获取在线歌词"/>
               <toggleSettingGroup id="onlineAutoCover" height="60" margin-top="4" icon="albumCover" mainText="自动获取在线封面"/>
-              <toggleSettingGroup id="onlineDailyReward" height="64" margin-top="4" icon="online" mainText="酷狗自动签到领会员" subText="仅在软件运行期间检查当天领取记录"/>
+              <toggleSettingGroup id="onlineDailyReward" height="64" margin-top="4" icon="online" mainText="K源自动签到领会员" subText="仅在软件运行期间检查当天领取记录"/>
               <horizontalLayout height="36" margin-top="12">
                 <button id="onlineOpenDownloads" icon="folder" text="打开下载文件夹" show_text="true"/>
                 <button id="onlineClearCache" icon="close" text="清理在线缓存" show_text="true" margin-left="8"/>

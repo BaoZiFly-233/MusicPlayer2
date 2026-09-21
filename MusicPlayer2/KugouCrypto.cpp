@@ -467,7 +467,7 @@ string AesDecryptForRegister(const string& cipher_base64, const string& key6)
 
 static string RsaEncryptLite(const string& plain, bool raw)
 {
-    // 这里用的是酷狗概念版的 RSA 公钥。它是固定常量，所以直接把 CNG 需要的
+    // 这里用的是K源的 RSA 公钥。它是固定常量，所以直接把 CNG 需要的
     // BCRYPT_RSAPUBLIC_BLOB 字节写死，不再运行时解析 X.509 —— 之前手写的解析
     // 一直取错模数（漏了 DER 给正数补的那个 0x00），导致加密出废密文。
     //

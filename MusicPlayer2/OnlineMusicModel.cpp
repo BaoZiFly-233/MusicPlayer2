@@ -495,7 +495,7 @@ void COnlineMusicModel::EnqueueTask(shared_ptr<Task> task)
                         {
                             ImportReference reference = ParseShareText(task->share_text);
                             if (!reference.IsValid())
-                                task->error = L"没有识别出支持的歌单链接，目前支持网易云音乐和 QQ 音乐";
+                                task->error = L"没有识别出支持的歌单链接，目前支持外部平台的分享链接";
                             else
                             {
                                 vector<ImportTrack> imported;
@@ -880,7 +880,7 @@ void COnlineMusicModel::CompleteTask(shared_ptr<Task> task)
                 m_state.qr_size = qr.getSize(); m_state.qr_pixels.clear();
                 for (int y = 0; y < m_state.qr_size; ++y)
                     for (int x = 0; x < m_state.qr_size; ++x) m_state.qr_pixels.push_back(qr.getModule(x, y));
-                m_state.status = task->source->GetScheme() == L"bodian" ? L"使用波点音乐 App 扫码，并在手机上确认登录。" : L"使用酷狗 App 扫码，并在手机上确认登录。";
+                m_state.status = task->source->GetScheme() == L"bodian" ? L"使用B源 App 扫码，并在手机上确认登录。" : L"使用K源 App 扫码，并在手机上确认登录。";
                 if (task->progress) task->progress->Update(L"二维码已就绪，等待手机扫码确认");
                 m_login_poll_at = GetTickCount64() + 2000;
             }
@@ -992,15 +992,15 @@ void COnlineMusicModel::ShowAccount(bool refresh)
     m_state.detail_visible = true;
     if (auto* bd = dynamic_cast<bodian::CBodianSource*>(CurrentSource()))
     {
-        m_state.detail = wstring(L"波点音乐 · ") + (bd->IsLoggedIn() ? L"已登录" : L"未登录");
+        m_state.detail = wstring(L"B源 · ") + (bd->IsLoggedIn() ? L"已登录" : L"未登录");
         m_state.detail += L"\n\n" + CBodianAdRewards::Instance().Describe();
     }
     else
     {
         auto* kg = dynamic_cast<kugou::CKugouSource*>(CurrentSource());
         m_state.detail = kg && kg->IsLoggedIn()
-            ? L"酷狗概念版 · 已登录"
-            : L"酷狗概念版 · 未登录";
+            ? L"K源 · 已登录"
+            : L"K源 · 未登录";
         m_state.detail += L"\n\n" + COnlineDailyRewards::Instance().Describe();
     }
     if (m_state.detail.empty()) m_state.detail = L"在线音乐账号";
@@ -1274,15 +1274,15 @@ void COnlineMusicModel::SaveLocalAsNativePlaylist(const vector<int>& rows)
 void COnlineMusicModel::ImportExternal()
 {
     CInputDlg dialog(m_owner);
-    dialog.SetTitle(L"从网易云 / QQ 导入歌单");
-    dialog.SetInfoText(L"粘贴网易云 / QQ 歌单分享链接或分享文本。");
+    dialog.SetTitle(L"从外部平台 导入歌单");
+    dialog.SetInfoText(L"粘贴外部平台 歌单分享链接或分享文本。");
     if (dialog.DoModal() != IDOK) return;
     CString text = dialog.GetEditText();
     text.Trim();
     if (text.IsEmpty()) { SetStatus(L"请先粘贴歌单分享链接。"); return; }
     const auto reference = ParseShareText(text.GetString());
-    if (!reference.IsValid()) { SetStatus(L"没有识别出支持平台的歌单链接，目前支持网易云音乐和 QQ 音乐。"); return; }
-    if (reference.source == ImportSource::Kuwo) { SetStatus(L"酷我歌单导入暂未支持。"); return; }
+    if (!reference.IsValid()) { SetStatus(L"没有识别出支持的歌单链接，目前支持外部平台的分享链接。"); return; }
+    if (reference.source == ImportSource::Kuwo) { SetStatus(L"上游歌单导入暂未支持。"); return; }
     StartExternalImport(text.GetString());
 }
 void COnlineMusicModel::StartExternalImport(const wstring& text)
@@ -1302,7 +1302,7 @@ void COnlineMusicModel::StartExternalImport(const wstring& text)
     task->share_text = text;
     {
         const auto reference = ParseShareText(text);
-        const wchar_t* prefix = reference.source == ImportSource::QQ ? L"QQ音乐歌单" : L"网易云歌单";
+        const wchar_t* prefix = L"外部平台歌单";
         task->import_default_name = wstring(prefix) + L" " + CTime::GetCurrentTime().Format(L"%Y-%m-%d").GetString();
     }
     task->progress = OnlineProgress::Start(L"导入外部歌单", L"正在读取歌单", false, true);
@@ -1478,7 +1478,7 @@ void COnlineMusicModel::Execute(const Command& command)
         m_state.request = { SearchKind(), m_state.query, 1 };
         StartRequest(); break;
     case Action::SearchPlaylists:
-        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"请切换到波点音乐搜索公开歌单。"); break; }
+        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"请切换到B源搜索公开歌单。"); break; }
         if (m_state.query.empty()) { SetStatus(L"请在搜索框输入歌单关键词。"); break; }
         m_state.page = Page::Cloud; m_state.request = {BrowseKind::PlaylistSearch, m_state.query, 1}; StartRequest(); break;
     case Action::Open:
@@ -1496,7 +1496,7 @@ void COnlineMusicModel::Execute(const Command& command)
                 break;
             }
             if (m_task) { SetStatus(L"上一次加载还没结束，请稍候再双击。"); break; }
-            // 专辑条目回搜索页：波点没有单独的专辑歌曲接口，id 里存的是
+            // 专辑条目回搜索页：B源没有单独的专辑歌曲接口，id 里存的是
             // 「艺术家 + 专辑名」，当作关键词再搜一次即可列出该专辑的曲目。
             if (item.type == BrowseItem::Type::Album)
             {
@@ -1648,7 +1648,7 @@ void COnlineMusicModel::Execute(const Command& command)
         if (!m_task && m_state.has_more) { ++m_state.request.page; StartRequest(true); --m_state.request.page; } break;
     case Action::OpenPlaylist:
         if (!CurrentSource() || !IsServiceId(m_state.query))
-        { SetStatus(L"在搜索框输入歌单编号；波点歌单使用 编号_来源（4、5 或 13）。"); break; }
+        { SetStatus(L"在搜索框输入歌单编号；B源歌单使用 编号_来源（4、5 或 13）。"); break; }
         m_state.page = Page::Cloud; m_state.request = { BrowseKind::PlaylistTracks, m_state.query, 1 }; StartRequest(); break;
     case Action::ImportAll:
         if (m_state.request.kind == BrowseKind::PlaylistTracks && !m_task) StartRequest(false, true); break;
@@ -1660,30 +1660,30 @@ void COnlineMusicModel::Execute(const Command& command)
         break;
     }
     case Action::SignIn:
-        if (!dynamic_cast<kugou::CKugouSource*>(CurrentSource())) { SetStatus(L"波点暂无签到"); break; }
+        if (!dynamic_cast<kugou::CKugouSource*>(CurrentSource())) { SetStatus(L"B源暂无签到"); break; }
         m_cache_view = false; COnlineDailyRewards::Instance().Request();
         CSourceRegistry::Instance().ForgetAllPlayUrls();
         m_state.page = Page::Account; ShowAccount(); break;
     case Action::ToggleSignIn:
-        if (!dynamic_cast<kugou::CKugouSource*>(CurrentSource())) { SetStatus(L"自动签到当前支持酷狗概念版。"); break; }
+        if (!dynamic_cast<kugou::CKugouSource*>(CurrentSource())) { SetStatus(L"自动签到当前支持K源。"); break; }
         m_cache_view = false;
         COnlineDailyRewards::Instance().SetEnabled(!COnlineDailyRewards::Instance().Enabled());
         m_state.page = Page::Account; ShowAccount(); break;
     case Action::AdReward:
-        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"看广告领会员目前用于波点音乐。"); break; }
+        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"看广告领会员目前用于B源。"); break; }
         m_cache_view = false; CBodianAdRewards::Instance().Request();
         // 领取后权益变了，刚刚那些「需要会员」的解析结论要丢掉，否则同一首还是播不了
         CSourceRegistry::Instance().ForgetAllPlayUrls();
         m_state.page = Page::Account; ShowAccount(); break;
     case Action::ToggleAdReward:
-        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"自动观看广告领会员目前用于波点音乐。"); break; }
+        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"自动观看广告领会员目前用于B源。"); break; }
         m_cache_view = false;
         CBodianAdRewards::Instance().SetEnabled(!CBodianAdRewards::Instance().Enabled());
         m_state.page = Page::Account; ShowAccount(); break;
     case Action::ImportAccount:
     {
-        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"此入口用于导入波点音乐登录文件。"); break; }
-        CFileDialog dialog(TRUE, L"json", nullptr, OFN_FILEMUSTEXIST | OFN_HIDEREADONLY, L"波点登录文件|*.json||", m_owner);
+        if (!dynamic_cast<bodian::CBodianSource*>(CurrentSource())) { SetStatus(L"此入口用于导入B源登录文件。"); break; }
+        CFileDialog dialog(TRUE, L"json", nullptr, OFN_FILEMUSTEXIST | OFN_HIDEREADONLY, L"B源登录文件|*.json||", m_owner);
         if (dialog.DoModal() != IDOK) break;
         CFileStatus info;
         if (!CFile::GetStatus(dialog.GetPathName(), info) || info.m_size > 65536) { SetStatus(L"登录文件无法读取或超过 64 KB。"); break; }

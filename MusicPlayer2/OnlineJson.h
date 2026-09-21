@@ -188,7 +188,7 @@ inline void AddBodianPlaylist(BrowseResult& result, const nlohmann::json& value,
 }
 
 
-// 酷我系的双语歌词有个坑：译文行的时间标签标的是「下一句原文」的时间，
+// 上游系的双语歌词有个坑：译文行的时间标签标的是「下一句原文」的时间，
 // 而不是它自己那句。播放器按「同时间戳两行、前原文后译文」配对翻译
 // （见 CLyrics::CombineSameTimeLyric），遇到这种错位会把两者整个配反 ——
 // 译文被当原文、原文被当译文。这里把译文的时间改回它所属原文的时间。
@@ -271,7 +271,7 @@ inline std::wstring AlignLyricTranslation(const std::wstring& lyric)
     return out;
 }
 
-// 酷狗的权限字段：AlbumPrivilege 为 8 表示只能试听（最该提前告知用户），
+// K源的权限字段：AlbumPrivilege 为 8 表示只能试听（最该提前告知用户），
 // 为 10 是完整播放；SQ 是个对象，带 filesize，有值说明这首提供无损。
 inline std::wstring KugouBadge(const nlohmann::json& value)
 {
@@ -354,7 +354,7 @@ inline KugouPlayback ParseKugouPlayback(const nlohmann::json& response, bool log
     KugouPlayback result;
     if (!response.is_object())
     {
-        result.error = L"酷狗播放接口返回格式异常";
+        result.error = L"K源播放接口返回格式异常";
         result.retry_quality = false;
         return result;
     }
@@ -362,8 +362,8 @@ inline KugouPlayback ParseKugouPlayback(const nlohmann::json& response, bool log
     if (code.empty()) code = JsonText(response, "error_code");
     if ((response.contains("status") && JsonNumber(response, "status") == 0) || (!code.empty() && code != "0"))
     {
-        result.error = code == "20006" ? L"酷狗播放请求校验失败（错误 20006）"
-            : L"酷狗未接受播放请求" + (code.empty() ? std::wstring() : L"（错误 " + kugou::FromUtf8(code) + L"）");
+        result.error = code == "20006" ? L"K源播放请求校验失败（错误 20006）"
+            : L"K源未接受播放请求" + (code.empty() ? std::wstring() : L"（错误 " + kugou::FromUtf8(code) + L"）");
         result.retry_quality = false;
         return result;
     }
@@ -372,7 +372,7 @@ inline KugouPlayback ParseKugouPlayback(const nlohmann::json& response, bool log
     if (data.contains("priv_status") && JsonNumber(data, "priv_status") == 0)
     {
         result.error = logged_in ? L"当前账号没有此歌曲或音质的播放权限，请检查平台会员或购买状态"
-            : L"请登录酷狗概念版账号后重试";
+            : L"请登录K源账号后重试";
         return result;
     }
     auto playable = [](const nlohmann::json& value) -> std::wstring {
@@ -397,7 +397,7 @@ inline KugouPlayback ParseKugouPlayback(const nlohmann::json& response, bool log
         else result.url = playable(*urls);
         if (!result.url.empty()) return result;
     }
-    result.error = L"酷狗未返回可播放地址，请稍后重试或检查曲目权限";
+    result.error = L"K源未返回可播放地址，请稍后重试或检查曲目权限";
     return result;
 }
 }

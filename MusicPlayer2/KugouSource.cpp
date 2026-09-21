@@ -58,7 +58,7 @@ bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseRe
     if (request.kind == BrowseKind::Search) return IOnlineSource::Browse(request, result);
     if ((request.kind == BrowseKind::Playlists || request.kind == BrowseKind::Recommend) && !IsLoggedIn())
     {
-        m_last_error = L"请在账号页登录酷狗概念版后查看个人推荐和云歌单。";
+        m_last_error = L"请在账号页登录K源后查看个人推荐和云歌单。";
         return false;
     }
     vector<pair<string, string>> params = {
@@ -91,7 +91,7 @@ bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseRe
         body = json{{"userid", GetAccount().userid}, {"token", GetAccount().token}, {"total_ver", 979},
             {"type", 2}, {"page", page}, {"pagesize", 30}}.dump(); break;
     case BrowseKind::PlaylistTracks:
-        if (!IsServiceId(request.id)) { m_last_error = L"歌单编号无效，请输入酷狗 global_collection_id"; return false; }
+        if (!IsServiceId(request.id)) { m_last_error = L"歌单编号无效，请输入K源 global_collection_id"; return false; }
         path = L"/pubsongs/v2/get_other_list_file_nofilt";
         params.insert(params.end(), {{"area_code", "1"}, {"begin_idx", to_string((page - 1) * 30)},
             {"plat", "1"}, {"type", "1"}, {"mode", "1"}, {"personal_switch", "1"},
@@ -102,7 +102,7 @@ bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseRe
     if (!Request(path, router, params, body, response)) return false;
     if (JsonNumber(response, "status") != 1 || !response.contains("data"))
     {
-        m_last_error = L"酷狗服务未返回列表（错误码 " + FromUtf8(JsonText(response, "error_code")) + L"），请检查登录状态或稍后重试。";
+        m_last_error = L"K源服务未返回列表（错误码 " + FromUtf8(JsonText(response, "error_code")) + L"），请检查登录状态或稍后重试。";
         return false;
     }
     const auto& data = response["data"];
@@ -127,7 +127,7 @@ bool CKugouSource::Browse(const online::BrowseRequest& request, online::BrowseRe
     const json* list = data.is_array() ? &data : nullptr;
     for (const char* key : {"info", "list", "songs", "song_list", "songlist"})
         if (list == nullptr && data.contains(key) && data[key].is_array()) list = &data[key];
-    if (list == nullptr) { m_last_error = L"酷狗列表数据格式已变化"; return false; }
+    if (list == nullptr) { m_last_error = L"K源列表数据格式已变化"; return false; }
     for (const auto& value : *list)
     {
         if (request.kind == BrowseKind::Charts || request.kind == BrowseKind::Playlists)
@@ -596,7 +596,7 @@ bool CKugouSource::GetLyric(const wstring& virtual_path, online::Lyric& result)
         return false;
     json search_result;
     try { search_result = json::parse(ToUtf8(search_text)); }
-    catch (const json::exception&) { m_last_error = L"酷狗歌词搜索响应无法解析"; return false; }
+    catch (const json::exception&) { m_last_error = L"K源歌词搜索响应无法解析"; return false; }
     if (!search_result.contains("candidates") || !search_result["candidates"].is_array() || search_result["candidates"].empty())
     { m_last_error = L"这首歌曲暂时没有匹配的歌词"; return false; }
 

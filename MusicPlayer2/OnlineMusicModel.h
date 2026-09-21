@@ -157,7 +157,7 @@ private:
     void ShowLocal();
     void ShowAccount(bool refresh = false);
     void ImportFile();
-    // 从网易云 / QQ 分享链接导入歌单，并匹配到当前音源。
+    // 从外部平台 分享链接导入歌单，并匹配到当前音源。
     void ImportExternal();
     void StartExternalImport(const std::wstring& text);
     // 把一组歌曲重新匹配到 target_source 那个音源。只有在线曲目会参与匹配，
@@ -188,7 +188,7 @@ private:
     std::vector<SongInfo> SelectedSongs(const std::vector<int>& rows, bool all = false) const;
     std::wstring LocalPath() const;
     online::IOnlineSource* CurrentSource() const;
-    // 当前列表的一句话摘要（「已加载 30 项 · 波点」），操作提示消失后状态栏回落到它。
+    // 当前列表的一句话摘要（「已加载 30 项 · B源」），操作提示消失后状态栏回落到它。
     std::wstring ListSummary() const;
 
     CWnd* m_owner{};

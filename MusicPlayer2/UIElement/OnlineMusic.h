@@ -56,7 +56,7 @@ namespace UiElement
     private:
         enum HoverButton { HB_PLAY, HB_PLAY_NEXT, HB_QUEUE, HB_SAVE, HB_MAX };
         void ShowStandardMenu(bool full, bool row_is_song);
-        // 一行歌曲的来源短名（本地 / 酷狗 / 波点）
+        // 一行歌曲的来源短名（本地 / K源 / B源）
         std::wstring RowOrigin(int row) const;
         // 这一行是否已收藏到在线本地歌单
         bool IsSavedRow(int row) const;

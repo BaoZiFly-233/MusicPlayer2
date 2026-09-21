@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-// 酷狗概念版接口用到的加密与设备身份工具。
+// K源接口用到的加密与设备身份工具。
 //
 // 这些常量与算法来自公开的第三方实现（MIT 协议的 MakcRe/KuGouMusicApi
 // 与 lianchengwu/lmplayer），仅用于个人学习与研究。详见 docs/research/。
@@ -65,7 +65,7 @@ std::string SignatureWeb(const std::vector<SignParam>& params);
 //   MD5( hash + salt + appid + mid + userid )
 std::string CalcV5Key(const std::string& hash, const std::string& mid, const std::string& userid);
 
-// URL 编码（酷狗接口的参数需要）
+// URL 编码（K源接口的参数需要）
 std::string UrlEncode(const std::string& str);
 
 // Base64 解码。接口返回的歌词内容是 Base64 编码的。

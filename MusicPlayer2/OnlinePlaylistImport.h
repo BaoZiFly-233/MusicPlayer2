@@ -9,7 +9,7 @@
 //
 // 流程分两步：
 //   1. 解析用户粘贴的分享链接/文本，识别平台并取出歌单编号，然后联网拉取曲目列表
-//   2. 把每首歌拿到本平台（酷狗/波点）搜索，用打分算法挑出最匹配的一首
+//   2. 把每首歌拿到本平台（K源/B源）搜索，用打分算法挑出最匹配的一首
 //
 // 第一步各平台接口不同，第二步是纯计算、不依赖网络，所以匹配算法可以单独做离线测试。
 
@@ -27,7 +27,7 @@ struct ImportTrack
     bool IsValid() const { return !title.empty(); }
 };
 
-// 支持的导入来源。酷狗自己的歌单已经能直接打开，所以这里不重复支持。
+// 支持的导入来源。K源自己的歌单已经能直接打开，所以这里不重复支持。
 enum class ImportSource
 {
     Unknown,
@@ -46,7 +46,7 @@ struct ImportReference
 };
 
 // 从一整段文本里识别平台并取出歌单编号。
-// 用户从 App 复制的文本形如「分享歌单《xxx》http://163cn.tv/xxxxx 来自@网易云音乐」，
+// 用户从 App 复制的文本形如「分享歌单《xxx》http://163cn.tv/xxxxx 来自@外部平台」，
 // 所以这里是在整段文本里找链接，而不是要求用户只粘贴一条干净的链接。
 ImportReference ParseShareText(const std::wstring& text);
 

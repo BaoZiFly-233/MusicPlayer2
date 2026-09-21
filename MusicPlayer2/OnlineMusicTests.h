@@ -701,7 +701,7 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
             }
             model.Shutdown();
         }
-        // 外部歌单导入：网易云是两步接口（先拿 trackIds，再分批补曲目信息），
+        // 外部歌单导入：外部平台是两步接口（先拿 trackIds，再分批补曲目信息），
         // 用公开歌单验证完整抓取链路；匹配算法由上面的离线用例覆盖。
         {
             using namespace online;
@@ -750,7 +750,7 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
                     {
                         auto track = result.items.front().track; track.cover_url.clear();
                         check(!source->GetCoverUrl(track).empty(), "live cover lookup for saved track metadata");
-                        // 酷狗歌词：现在优先取带逐字时间轴的版本，验证解密和格式转换能走通
+                        // K源歌词：现在优先取带逐字时间轴的版本，验证解密和格式转换能走通
                         if (source->GetScheme() == L"kugou")
                         {
                             online::Lyric lyric;
@@ -773,7 +773,7 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
                                 check(word_timing, "live kugou lyric carries word timing");
                             }
                         }
-                        // 波点歌词：优先取 LRCX 逐字版本，验证单位换算和行/译文配对在真实数据上走通
+                        // B源歌词：优先取 LRCX 逐字版本，验证单位换算和行/译文配对在真实数据上走通
                         if (source->GetScheme() == L"bodian")
                         {
                             online::Lyric lyric;
@@ -902,7 +902,7 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
     }
     for (const auto& path : files) DeleteFileW(path.c_str());
     RemoveDirectoryW(temp_name);
-    // ---- 酷狗 KRC 逐字歌词：格式转换（离线）----
+    // ---- K源 KRC 逐字歌词：格式转换（离线）----
     {
         // KRC 是「[行起始,行时长]<字相对起始,字时长,0>字…」，要转成播放器能识别的
         // 扩展歌词格式「[行绝对时间]<字绝对时间>字」。
@@ -938,7 +938,7 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
         check(kugou::KrcToExtendedLyric("").empty(), "empty krc input rejected");
         check(kugou::DecryptKrc("").empty(), "empty krc decrypt rejected");
     }
-    // ---- 波点 LRCX 逐字歌词（离线）----
+    // ---- B源 LRCX 逐字歌词（离线）----
     {
         // [kuwo:NNN] 是八进制的权重，<a,b> 是字位置和时长的和差编码
         const std::string sample =
@@ -998,7 +998,7 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
         const auto ref_qq = ParseShareText(L"https://y.qq.com/n/ryqq/playlist/7011264340");
         check(ref_qq.source == ImportSource::QQ && ref_qq.id == L"7011264340", "qq playlist link");
         // 用户从 App 复制出来的是一整段话，链接夹在中间
-        const auto ref_prose = ParseShareText(L"分享歌单《测试》http://music.163.com/playlist?id=12345 来自@网易云音乐");
+        const auto ref_prose = ParseShareText(L"分享歌单《测试》http://music.163.com/playlist?id=12345 来自@外部平台");
         check(ref_prose.source == ImportSource::Netease && ref_prose.id == L"12345", "share text with prose");
         check(ParseShareText(L"http://163cn.tv/abc123").source == ImportSource::Netease, "netease short link recognized");
         check(!ParseShareText(L"https://example.com/whatever").IsValid(), "unknown link rejected");

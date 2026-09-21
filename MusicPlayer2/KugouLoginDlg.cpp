@@ -94,7 +94,7 @@ void CKugouLoginDlg::RefreshQrCode()
         return;
     }
 
-    UpdateStatusText(L"请用酷狗App扫描二维码");
+    UpdateStatusText(L"请用K源App扫描二维码");
 
     // 每 2 秒问一次服务端扫了没有
     m_waiting = true;

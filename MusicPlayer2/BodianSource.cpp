@@ -49,7 +49,7 @@ namespace bodian
 
 static const wchar_t* API_HOST = L"bd-api.kuwo.cn";
 
-// 必须伪装成波点的安卓客户端，服务端据此判断请求来源。
+// 必须伪装成B源的安卓客户端，服务端据此判断请求来源。
 // 换成别的 UA 会被当成未知客户端，接口返回「歌曲已下线」。
 static const char* BODIAN_USER_AGENT = "Dart/2.10 (dart:io)";
 
@@ -109,7 +109,7 @@ void CBodianSource::LoadIdentity(const wstring& config_dir)
     DATA_BLOB encrypted{static_cast<DWORD>(bytes.size()), reinterpret_cast<BYTE*>(bytes.data())}, plain{};
     if (!CryptUnprotectData(&encrypted, nullptr, nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &plain)) return;
     try { ApplyAccount(json::parse(string(reinterpret_cast<char*>(plain.pbData), plain.cbData))); }
-    catch (const json::exception&) { m_last_error = L"本机波点登录信息已损坏，请重新登录"; }
+    catch (const json::exception&) { m_last_error = L"本机B源登录信息已损坏，请重新登录"; }
     SecureZeroMemory(plain.pbData, plain.cbData); LocalFree(plain.pbData);
 }
 bool CBodianSource::SaveIdentity(const wstring& config_dir) const
@@ -151,9 +151,9 @@ bool CBodianSource::SignedRequest(const wstring& path, vector<pair<string, strin
     wstring result;
     if (!online::HttpRequest(L"https://bd-api.kuwo.cn" + path + L"?" + FromUtf8(query), body, FromUtf8(headers), result, m_last_error, method)) return false;
     try { response = json::parse(ToUtf8(result)); }
-    catch (const json::exception&) { m_last_error = L"波点响应格式无法识别"; return false; }
+    catch (const json::exception&) { m_last_error = L"B源响应格式无法识别"; return false; }
     if (online::JsonNumber(response, "code") != 200)
-    { m_last_error = L"波点服务：" + FromUtf8(online::JsonText(response, "msg")); return false; }
+    { m_last_error = L"B源服务：" + FromUtf8(online::JsonText(response, "msg")); return false; }
     return true;
 }
 bool CBodianSource::ApplyAccount(const json& data)
@@ -209,7 +209,7 @@ bool CBodianSource::ValidateAccount()
         const auto& data = response["data"];
         if (ApplyAccount(data) || (data.contains("userInfo") && data["userInfo"].is_object() && !data["userInfo"].empty())) return true;
     }
-    m_last_error = L"波点未返回有效账号信息"; return false;
+    m_last_error = L"B源未返回有效账号信息"; return false;
 }
 bool CBodianSource::GetQrCode(wstring& content)
 {
@@ -217,7 +217,7 @@ bool CBodianSource::GetQrCode(wstring& content)
     json response;
     if (!SignedRequest(L"/api/ucenter/login/qrCode", {}, response)) return false;
     m_qr_key = response.contains("data") ? FromUtf8(online::JsonText(response["data"], "qrCode")) : L"";
-    if (m_qr_key.empty()) { m_last_error = L"波点未返回登录二维码"; return false; }
+    if (m_qr_key.empty()) { m_last_error = L"B源未返回登录二维码"; return false; }
     content = L"https://bodian-oia.kuwo.cn/bodian/download.html?pageName=login_pc&pt=3&id=" + FromUtf8(kugou::UrlEncode(ToUtf8(m_qr_key)));
     m_qr_created = GetTickCount64(); return true;
 }
@@ -227,7 +227,7 @@ online::QrStatus CBodianSource::CheckQrCode()
     if (m_qr_key.empty() || GetTickCount64() - m_qr_created > 180000) return QrStatus::Expired;
     json response;
     if (!SignedRequest(L"/api/ucenter/login/qrCodeStatus", {{"qrCode", ToUtf8(m_qr_key)}}, response)) return QrStatus::Failed;
-    if (!response.contains("data") || !response["data"].is_object()) { m_last_error = L"波点二维码状态格式已变化"; return QrStatus::Failed; }
+    if (!response.contains("data") || !response["data"].is_object()) { m_last_error = L"B源二维码状态格式已变化"; return QrStatus::Failed; }
     auto data = response["data"];
     if (ApplyAccount(data)) return QrStatus::Authorized;
     int status = online::JsonNumber(data, "status");
@@ -236,7 +236,7 @@ online::QrStatus CBodianSource::CheckQrCode()
         const string body = json{{"authType", 10}, {"qrCode", ToUtf8(m_qr_key)}}.dump();
         if (!SignedRequest(L"/api/ucenter/users/login", {}, response, body, L"POST")) return QrStatus::Failed;
         if (response.contains("data") && ApplyAccount(response["data"])) return QrStatus::Authorized;
-        m_last_error = L"扫码已确认，但波点未返回登录凭据。可从更多菜单导入自己的登录文件。"; return QrStatus::Failed;
+        m_last_error = L"扫码已确认，但B源未返回登录凭据。可从更多菜单导入自己的登录文件。"; return QrStatus::Failed;
     }
     if (status == 2) return QrStatus::Scanned;
     if (status > 3) return QrStatus::Expired;
@@ -261,7 +261,7 @@ bool CBodianSource::Browse(const online::BrowseRequest& request, online::BrowseR
         if (!Get(L"/api/service/home/module?moduleId=2&uid=-1&token=", response)) return false;
         if (JsonNumber(response, "code") != 200 || !response.contains("data") || !response["data"].contains("songList")
             || !response["data"]["songList"].is_array()) { m_last_error = L"首页精选歌单暂不可用"; return false; }
-        for (const auto& playlist : response["data"]["songList"]) AddBodianPlaylist(result, playlist, L"波点精选歌单");
+        for (const auto& playlist : response["data"]["songList"]) AddBodianPlaylist(result, playlist, L"B源精选歌单");
         return true;
     }
     if (request.kind == BrowseKind::Playlists && IsLoggedIn())
@@ -271,7 +271,7 @@ bool CBodianSource::Browse(const online::BrowseRequest& request, online::BrowseR
         {
             json fond;
             if (!Get(L"/api/service/playlist/fond?userId=" + FromUtf8(account.uid) + L"&uid=-1&token=", fond)) return false;
-            if (JsonNumber(fond, "code") != 200) { m_last_error = L"云歌单读取失败，请重新登录波点音乐"; return false; }
+            if (JsonNumber(fond, "code") != 200) { m_last_error = L"云歌单读取失败，请重新登录B源"; return false; }
             if (fond.contains("data") && fond["data"].is_object()) AddBodianPlaylist(result, fond["data"], L"我喜欢的音乐");
             json created;
             if (!Get(L"/api/service/playlist/userCreate?userId=" + FromUtf8(account.uid) + L"&uid=-1&token=", created)) return false;
@@ -297,7 +297,7 @@ bool CBodianSource::Browse(const online::BrowseRequest& request, online::BrowseR
         if (tracks)
         {
             wstring id, source;
-            if (!ParseBodianPlaylistId(request.id, id, source)) { m_last_error = L"波点歌单编号无效，来源支持 4、5、13"; return false; }
+            if (!ParseBodianPlaylistId(request.id, id, source)) { m_last_error = L"B源歌单编号无效，来源支持 4、5、13"; return false; }
             path = L"/api/service/playlist/" + id + L"/musicList?source=" + source + L"&pn=" + to_wstring((std::max)(1, request.page));
         }
         else path = L"/api/search/playlist/list?keyword=" + FromUtf8(kugou::UrlEncode(ToUtf8(request.id.empty() ? L"精选" : request.id)))
@@ -321,7 +321,7 @@ bool CBodianSource::Browse(const online::BrowseRequest& request, online::BrowseR
         json ranks;
         if (!Get(L"/api/service/home/module?moduleId=5&uid=-1&token=", ranks)) return false;
         if (JsonNumber(ranks, "code") != 200 || !ranks.contains("data") || !ranks["data"].contains("bangList")
-            || !ranks["data"]["bangList"].is_array()) { m_last_error = L"波点排行榜暂不可用"; return false; }
+            || !ranks["data"]["bangList"].is_array()) { m_last_error = L"B源排行榜暂不可用"; return false; }
         for (const auto& rank : ranks["data"]["bangList"])
         {
             const auto id = JsonText(rank, "id");
@@ -340,14 +340,14 @@ bool CBodianSource::Browse(const online::BrowseRequest& request, online::BrowseR
     case BrowseKind::ChartTracks:
         if (!IsServiceId(request.id)) { m_last_error = L"分类编号无效"; return false; }
         path = ranking ? L"/api/service/bang/" + request.id.substr(5) + L"/musics" : L"/api/service/category/" + request.id + L"/musics"; break;
-    default: m_last_error = L"波点暂不支持此页面"; return false;
+    default: m_last_error = L"B源暂不支持此页面"; return false;
     }
     path += L"?uid=-1&token=&pn=" + to_wstring((std::max)(1, request.page) - (ranking ? 0 : 1)) + L"&rn=30";
     json response;
     if (!Get(path, response)) return false;
     if (JsonNumber(response, "code") != 200 || !response.contains("data") || !response["data"].is_object())
     {
-        m_last_error = L"波点服务返回错误：" + FromUtf8(JsonText(response, "msg"));
+        m_last_error = L"B源服务返回错误：" + FromUtf8(JsonText(response, "msg"));
         return false;
     }
     const auto& data = response["data"];
@@ -479,7 +479,7 @@ bool CBodianSource::Search(const wstring& keyword, int page, vector<online::Trac
     return true;
 }
 
-// 搜索结果里补上专辑条目。波点的歌曲搜索不返回专辑实体，综合搜索的
+// 搜索结果里补上专辑条目。B源的歌曲搜索不返回专辑实体，综合搜索的
 // albumPage 才有；条目 id 里存「艺术家 + 专辑名」，点进去会用它再搜一次歌曲。
 void CBodianSource::AddAlbums(online::BrowseResult& result, const wstring& keyword)
 {
@@ -601,7 +601,7 @@ bool CBodianSource::ClaimAdFreeTime(int& seconds, wstring& detail)
         if (!online::HttpRequest(url, body, FromUtf8(headers), raw, m_last_error, L"POST")) return false;
         m_last_response = raw;
         try { response = json::parse(ToUtf8(raw)); }
-        catch (const json::exception&) { m_last_error = L"波点响应格式无法识别"; return false; }
+        catch (const json::exception&) { m_last_error = L"B源响应格式无法识别"; return false; }
         return true;
     };
 
@@ -622,7 +622,7 @@ bool CBodianSource::ClaimAdFreeTime(int& seconds, wstring& detail)
         if (m_last_error.empty())
         {
             wstring msg = FromUtf8(online::JsonText(response, "msg"));
-            m_last_error = msg.empty() ? L"看广告领畅听没有成功，请稍后重试" : L"波点服务：" + msg;
+            m_last_error = msg.empty() ? L"看广告领畅听没有成功，请稍后重试" : L"B源服务：" + msg;
         }
         return false;
     }
@@ -772,7 +772,7 @@ bool CBodianSource::EarningRequest(const wstring& path, const wstring& extra_que
     const string& body, json& response, const wchar_t* method)
 {
     auto account = GetAccount();
-    if (!account.IsLoggedIn()) { m_last_error = L"请先登录波点音乐再领取"; return false; }
+    if (!account.IsLoggedIn()) { m_last_error = L"请先登录B源再领取"; return false; }
 
     // uid / token / timestamp 与业务参数一起参与签名，顺序不影响结果
     string query = extra_query.empty() ? string() : ToUtf8(extra_query) + "&";
@@ -791,7 +791,7 @@ bool CBodianSource::EarningRequest(const wstring& path, const wstring& extra_que
     const wstring url = wstring(L"https://") + API_HOST + path + L"?" + FromUtf8(signed_query);
     if (!online::HttpRequest(url, body, FromUtf8(headers), result, m_last_error, method)) return false;
     try { response = json::parse(ToUtf8(result)); }
-    catch (const json::exception&) { m_last_error = L"波点响应格式无法识别"; return false; }
+    catch (const json::exception&) { m_last_error = L"B源响应格式无法识别"; return false; }
     return true;
 }
 
@@ -805,7 +805,7 @@ bool CBodianSource::GetEarningTasks(vector<EarningTask>& tasks)
     const auto& data = response["data"];
     if (!data.contains("list") || !data["list"].is_array())
     {
-        m_last_error = L"波点没有返回听歌任务列表";
+        m_last_error = L"B源没有返回听歌任务列表";
         return false;
     }
     for (const auto& item : data["list"])
@@ -935,7 +935,7 @@ wstring CBodianSource::ResolvePlayUrl(const wstring& virtual_path)
         if (!SignedRequest(L"/api/play/music/v2/checkRight", {{"musicId", id}, {"freeSign", ""}}, response, rights_body)) return {};
         const int right = response.contains("data") ? online::JsonNumber(response["data"], "status") : 0;
         if (right != 1 && right != 4)
-        { m_last_error = right == 3 ? L"当前波点账号仅有试听权限，未播放试听片段" : L"波点账号没有这首歌曲的完整播放权限"; return {}; }
+        { m_last_error = right == 3 ? L"当前B源账号仅有试听权限，未播放试听片段" : L"B源账号没有这首歌曲的完整播放权限"; return {}; }
         // 按音质从高到低试，失败就往下退。把每次失败的原因记下来，
         // 最后告诉用户实际用的是哪一档、上面几档为什么没成 —— 否则用户只会看到「怎么没有无损」。
         const vector<pair<wstring, pair<string, string>>> qualities = {
@@ -968,7 +968,7 @@ wstring CBodianSource::ResolvePlayUrl(const wstring& virtual_path)
                 return FromUtf8(url);
             }
         }
-        if (m_last_error.empty()) m_last_error = L"波点没有返回可播放的音频地址";
+        if (m_last_error.empty()) m_last_error = L"B源没有返回可播放的音频地址";
         return {};
     }
 
@@ -992,12 +992,12 @@ wstring CBodianSource::ResolvePlayUrl(const wstring& virtual_path)
     // 这两个错误码含义不同，要分开处理，否则用户会以为程序坏了
     if (code == 20018)
     {
-        m_last_error = L"这首歌需要波点音乐会员才能播放";
+        m_last_error = L"这首歌需要B源会员才能播放";
         return wstring();
     }
     if (code == 20012)
     {
-        m_last_error = L"这首歌在波点音乐已下线或无版权";
+        m_last_error = L"这首歌在B源已下线或无版权";
         return wstring();
     }
     if (code != 200)
@@ -1191,7 +1191,7 @@ wstring LrcxToExtendedLyric(const string& lrcx_utf8)
 
         if (!row.word_timed)
         {
-            // <0,0> 行是酷我放译文的地方：每句原文后面跟一句译文，但译文的时间标签
+            // <0,0> 行是上游放译文的地方：每句原文后面跟一句译文，但译文的时间标签
             // 标的是下一句原文的时间 —— 和下一行共用同一个时间标签就是它的特征。
             // 它不参与自己的定位，而是挂到上一句原文上，播放器把「时间戳相同的
             // 两行」当成原文加译文。

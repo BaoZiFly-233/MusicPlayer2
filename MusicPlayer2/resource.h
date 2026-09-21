@@ -1092,7 +1092,7 @@
 #define ID_SONGS_MULTI_VERSION_ITEM_MAX 33511
 #define ID_LIST_ITEM_PREVIEW            33512
 
-// 酷狗扫码登录
+// K源扫码登录
 #define IDD_KUGOU_LOGIN_DIALOG          696
 #define IDC_KUGOU_QR_STATIC             1394
 #define IDC_KUGOU_LOGIN_STATUS_STATIC   1395

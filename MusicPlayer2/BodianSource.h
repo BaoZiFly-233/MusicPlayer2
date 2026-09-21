@@ -6,9 +6,9 @@
 #include "OnlineSource.h"
 #include "nlohmann/json.hpp"
 
-// 波点音乐音源。
+// B源音源。
 //
-// 波点音乐是酷我（腾讯音乐）旗下的产品，接口在 bd-api.kuwo.cn，与酷狗不是同一套。
+// B源是上游某条产品线的前端，接口自成一套，与K源不通用。
 // 匿名浏览与新版账号/播放接口使用不同客户端参数；新版接口需要查询签名。
 //
 // 使用上的几个要点：
@@ -20,7 +20,7 @@
 namespace bodian
 {
 
-// 把 LRCX（波点/酷我的逐字歌词）转成播放器认的扩展 LRC：
+// 把 LRCX（B源/上游的逐字歌词）转成播放器认的扩展 LRC：
 //   [行绝对时间]<字绝对时间>字<字结束时间>…    原文行
 //   [行绝对时间]译文                紧跟其后、同时间戳的译文
 // 播放器把「时间戳相同的两行」配成原文加译文，所以译文要挂到上一句原文上；
@@ -38,8 +38,8 @@ public:
 
     // ---- IOnlineSource ----
     std::wstring GetScheme() const override { return L"bodian"; }
-    std::wstring GetDisplayName() const override { return L"波点音乐"; }
-    std::wstring GetShortName() const override { return L"波点"; }
+    std::wstring GetDisplayName() const override { return L"B源"; }
+    std::wstring GetShortName() const override { return L"B源"; }
     bool Search(const std::wstring& keyword, int page, std::vector<online::Track>& result) override;
     bool Browse(const online::BrowseRequest& request, online::BrowseResult& result) override;
     std::wstring ResolvePlayUrl(const std::wstring& virtual_path) override;
@@ -65,7 +65,7 @@ public:
     void Logout() { SetAccount({}); }
     static std::string QuerySignature(const std::wstring& path, const std::string& query, const std::string& body = "");
 
-    // 看广告领免费畅听（波点官方的激励视频权益）。
+    // 看广告领免费畅听（B源官方的激励视频权益）。
     //
     // 一次上报换 30 分钟畅听，服务端每天限量（allDayConfig.needWatch），
     // 领取后付费曲的 audioUrl 会从 20018 直接变成 200，无损档同样解开。
@@ -81,7 +81,7 @@ public:
     bool EarningRequest(const std::wstring& path, const std::wstring& extra_query,
         const std::string& body, nlohmann::json& response, const wchar_t* method);
 
-    // 听歌赚金币。波点按听歌时长分了九级奖励（5 秒到 3 小时，金币 36 到 188），
+    // 听歌赚金币。B源按听歌时长分了九级奖励（5 秒到 3 小时，金币 36 到 188），
     // 实测服务端并不核对真实听歌时长：按 id 顺序逐个上报就能领满当天全部金币，
     // 上报后服务端还会把累计听歌时间回写成该级要求的值。
     struct EarningTask
@@ -91,7 +91,7 @@ public:
         int gold{};     // 该级金币
         int status{};   // 3 表示已完成，其余可领
     };
-    // 搜索结果里补上专辑条目：波点的歌曲搜索不返回专辑实体，
+    // 搜索结果里补上专辑条目：B源的歌曲搜索不返回专辑实体，
     // 而综合搜索的 albumPage 有。专辑条目点进去会用它再搜一次歌曲。
     void AddAlbums(online::BrowseResult& result, const std::wstring& keyword);
     // 只搜专辑：综合搜索的 albumPage 就是专辑列表，条目同样用「艺术家 + 专辑名」再搜歌曲

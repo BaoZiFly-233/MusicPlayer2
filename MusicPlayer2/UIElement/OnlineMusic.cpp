@@ -29,7 +29,7 @@ void OnlineMusicList::SetSnapshot(std::shared_ptr<const Model::State> state)
         else if (origin != current) { m_mixed_origins = true; break; }
     }
 }
-// 一行歌曲的来源短名（本地 / 酷狗 / 波点）。来源只看地址本身。
+// 一行歌曲的来源短名（本地 / K源 / B源）。来源只看地址本身。
 std::wstring OnlineMusicList::RowOrigin(int row) const
 {
     // 专辑、歌单、榜单这类行没有音频地址，不属于任何来源，不能给它们贴上「本地」
@@ -369,7 +369,7 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
         menu.AppendMenuW(MF_SEPARATOR);
         // 页面
         menu.AppendMenuW(MF_STRING, M_IMPORT_FILE, L"从本地歌单文件导入…");
-        menu.AppendMenuW(MF_STRING, M_IMPORT_LINK, L"从网易云 / QQ 歌单链接导入…");
+        menu.AppendMenuW(MF_STRING, M_IMPORT_LINK, L"从外部平台 歌单链接导入…");
         // 当前播放列表换源：从媒体库打开的导入歌单走这里，结果另存为新歌单
         {
             auto& sources = online::CSourceRegistry::Instance().GetAll();
@@ -396,12 +396,12 @@ void OnlineMusicList::ShowStandardMenu(bool full, bool row_is_song)
         // 账号
         const UINT kugou = state->source == 0 ? MF_STRING : MF_GRAYED;
         const UINT bodian = state->source == 1 ? MF_STRING : MF_GRAYED;
-        menu.AppendMenuW(kugou, M_SIGN_IN, L"酷狗今日签到领会员 / 检查到账");
-        menu.AppendMenuW(kugou | (COnlineDailyRewards::Instance().Enabled() ? MF_CHECKED : 0), M_TOGGLE_SIGN_IN, L"酷狗自动签到领会员");
-        menu.AppendMenuW(bodian, M_AD_REWARD, L"观看广告领取波点会员畅听");
+        menu.AppendMenuW(kugou, M_SIGN_IN, L"K源今日签到领会员 / 检查到账");
+        menu.AppendMenuW(kugou | (COnlineDailyRewards::Instance().Enabled() ? MF_CHECKED : 0), M_TOGGLE_SIGN_IN, L"K源自动签到领会员");
+        menu.AppendMenuW(bodian, M_AD_REWARD, L"观看广告领取B源会员畅听");
         menu.AppendMenuW(bodian | (CBodianAdRewards::Instance().Enabled() ? MF_CHECKED : 0), M_TOGGLE_AD_REWARD, L"自动观看广告领会员");
-        menu.AppendMenuW(bodian, M_SEARCH_PLAYLISTS, L"按关键词搜索波点歌单");
-        menu.AppendMenuW(bodian, M_IMPORT_ACCOUNT, L"导入波点登录文件…");
+        menu.AppendMenuW(bodian, M_SEARCH_PLAYLISTS, L"按关键词搜索B源歌单");
+        menu.AppendMenuW(bodian, M_IMPORT_ACCOUNT, L"导入B源登录文件…");
     }
 
     CPoint point; GetCursorPos(&point);
@@ -590,7 +590,7 @@ void OnlineMusic::ShowImportMenu()
 {
     CMenu menu; menu.CreatePopupMenu();
     menu.AppendMenuW(MF_STRING, 1, L"从本地歌单文件导入…");
-    menu.AppendMenuW(MF_STRING, 2, L"从网易云 / QQ 歌单链接导入…");
+    menu.AppendMenuW(MF_STRING, 2, L"从外部平台 歌单链接导入…");
     CPoint point; GetCursorPos(&point);
     const UINT value = menu.TrackPopupMenu(TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, ui->GetOwner());
     if (value == 1) m_list->Dispatch(Model::Action::Import);
