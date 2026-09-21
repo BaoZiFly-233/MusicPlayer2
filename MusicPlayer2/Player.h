@@ -156,6 +156,9 @@ private:
     vector<int> m_shuffle_list;             //储存乱序播放过的曲目序号
     int m_shuffle_index{};                  //乱序播放时当前的索引
     bool m_is_shuffle_list_played{ false };
+    // 这张洗牌表是不是「以当前曲目为第 0 位」建的（InitShuffleList(m_index)）。
+    // 是的话取下一首要跳过第 0 位，否则会把当前这首再放一遍。
+    bool m_shuffle_from_current{ false };
     inline int GetNextShuffleIdx() const;        //返回乱序播放下下一曲的序号
     inline int GetPrevShuffleIdx() const;        //返回乱序播放下前一曲的序号
     std::list<int> m_random_list;          //随机播放模式下的历史记录，用于回溯之前的记录

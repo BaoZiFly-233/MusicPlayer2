@@ -2564,8 +2564,11 @@ void CMusicPlayerDlg::OnTimer(UINT_PTR nIDEvent)
             const bool online_current = online::CSourceRegistry::IsVirtualPath(current_path);
             const bool online_error = online_current && player.IsError();
             COnlineMusicModel::Instance().SetPlaybackError(online_error ? player.GetErrorInfo() : L"");
-            // 播放失败时把这首在线曲目标记下来，列表里会显示成灰色
-            if (online_error) COnlineMusicModel::Instance().MarkUnplayable(playback_path);
+            // 播放失败时把这首在线曲目标记下来，列表里会显示成灰色。
+            // 这里必须用 current_path（列表里那一行的地址）：自动换源之后 playback_path
+            // 是备选音源的地址、不是任何一行的地址，拿它标记的话那行永远不会变灰，
+            // 而下面成功时又是按 current_path 撤标记，两边口径还不一致。
+            if (online_error) COnlineMusicModel::Instance().MarkUnplayable(current_path);
             if (online_current && !online_error)
             {
                 // 又能播了（刚领到会员、地址重新解析成功）就撤掉灰色标记

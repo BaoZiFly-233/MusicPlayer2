@@ -255,6 +255,11 @@ void CPlaylistFile::RemoveSong(const SongInfo& song)
 bool CPlaylistFile::IsPlaylistFile(const wstring& file_path)
 {
     wstring file_extension = CFilePathHelper(file_path).GetFileExtension();
+    // json 是 BoTapMusic JSON 歌单的另一种扩展名（导出对话框两种都提供），所以拖放和
+    // 命令行打开也要认，否则自己导出的 .json 拖回来会被当成音频文件。
+    // 但它不进 m_surpported_playlist：那份清单还用来列「可关联的文件类型」，
+    // 把通用的 .json 登记进去会把别的程序的 json 文件也抢过来。
+    if (file_extension == L"json") return true;
     return CCommon::IsItemInVector(m_surpported_playlist, file_extension);
 }
 

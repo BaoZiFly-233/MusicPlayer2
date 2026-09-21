@@ -56,6 +56,7 @@ inline void CPlayer::OnPlaylistChange() {
     m_next_tracks.clear();
     m_shuffle_list.clear();
     m_is_shuffle_list_played = false;
+    m_shuffle_from_current = false;
     m_prepared_random = -1;
     m_prepared_shuffle.clear();
 }
@@ -844,7 +845,11 @@ bool CPlayer::PlayTrack(int song_track, bool auto_next)
                 }
                 else
                 {
-                    m_shuffle_index = m_is_shuffle_list_played ? GetNextShuffleIdx() : 0;
+                    // 刚生成的洗牌表有两种来源，不能一律按同一种取法：
+                    //   以当前曲目为第 0 位建的（InitShuffleList(m_index)）要跳过它，否则再放一遍当前这首；
+                    //   随机生成或预生成的下一轮，第 0 位本来就该先放。
+                    m_shuffle_index = (m_is_shuffle_list_played || m_shuffle_from_current)
+                        ? GetNextShuffleIdx() : 0;
                     if (m_shuffle_index == 0 && m_is_shuffle_list_played || m_shuffle_list.empty())
                     {
                         //如果列表中的曲目已经随机播放完了一遍，则重新生成一个新的顺序
@@ -2305,7 +2310,10 @@ SongInfo CPlayer::GetNextTrack() const
 
     case RM_PLAY_SHUFFLE:
     {
-        int shuffle_index = m_is_shuffle_list_played ? GetNextShuffleIdx() : 0;
+        // 和 MusicControl 里那处判断口径一致：以当前曲目为第 0 位建的表要跳过它，
+        // 随机/预生成的一轮则从第 0 位开始。取错的「下一首」提示和预缓存都会跟着错。
+        const int shuffle_index = (m_is_shuffle_list_played || m_shuffle_from_current)
+            ? GetNextShuffleIdx() : 0;
         if ((shuffle_index == 0 && m_is_shuffle_list_played) || m_shuffle_list.size() != m_playlist.size() || m_shuffle_list.empty())
         {
             return !m_prepared_shuffle.empty() && m_prepared_shuffle.size() == m_playlist.size()
@@ -2754,6 +2762,8 @@ void CPlayer::InitShuffleList(int first_song)
     {
         m_shuffle_list = std::move(m_prepared_shuffle);
         m_shuffle_index = 0; m_is_shuffle_list_played = false;
+        // 预生成的一轮是随机排列，第 0 位就是该放的那首
+        m_shuffle_from_current = false;
         return;
     }
     m_prepared_shuffle.clear();
@@ -2789,6 +2799,9 @@ void CPlayer::InitShuffleList(int first_song)
     }
     m_shuffle_index = 0;
     m_is_shuffle_list_played = false;
+    // first_song >= 0 时当前曲目被放在第 0 位，取「下一首」必须从第 1 位开始；
+    // -1 是随机生成（第 0 位本来就该先放），列表刚载入时走的是这一支之外的那一支。
+    m_shuffle_from_current = first_song >= 0;
 }
 
 void CPlayer::SearchOutAlbumCover()
