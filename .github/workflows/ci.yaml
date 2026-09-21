@@ -4,7 +4,9 @@ name: CI
 # on: [push, pull_request, workflow_dispatch]
 on:
   push:
+    branches: [master]
     tags: ['v*']
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -14,12 +16,16 @@ jobs:
       - name: Check Out
         uses: actions/checkout@v4
       # 所有版本链接：https://docs.microsoft.com/en-us/visualstudio/releases/2022/release-history
-      - name: 下载 vs_enterprise.exe
-        run: Invoke-WebRequest "https://aka.ms/vs/17/release/vs_enterprise.exe" -OutFile vs_enterprise.exe
       # 组件列表：https://docs.microsoft.com/en-us/visualstudio/install/workload-component-id-vs-enterprise?view=vs-2022
       # 命令行选项：https://docs.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2022
-      - name: 安装需要的组件
+      # 镜像一般自带 MFC/ATL，先探一下，缺了才装：每次 push 都重装一遍太慢了。
+      - name: 准备 MSVC 与 MFC 组件
+        shell: pwsh
         run: |
+          $mfc = Get-ChildItem -Path "$env:ProgramFiles\Microsoft Visual Studio\2022\*\VC\Tools\MSVC\*\atlmfc" -Directory -ErrorAction SilentlyContinue
+          if ($mfc) { Write-Host "镜像已带 MFC/ATL，跳过安装"; exit 0 }
+          Write-Host "缺少 MFC/ATL，开始安装..."
+          Invoke-WebRequest "https://aka.ms/vs/17/release/vs_enterprise.exe" -OutFile vs_enterprise.exe
           Start-Process -Wait vs_enterprise.exe -ArgumentList "--quiet", "--force", "--norestart", `
           "--add", "Microsoft.VisualStudio.Component.VC.CoreIde", `
           "--add", "Microsoft.VisualStudio.Component.IntelliCode", `
@@ -57,12 +63,16 @@ jobs:
       - name: Check Out
         uses: actions/checkout@v4
       # 所有版本链接：https://docs.microsoft.com/en-us/visualstudio/releases/2022/release-history
-      - name: 下载 vs_enterprise.exe
-        run: Invoke-WebRequest "https://aka.ms/vs/17/release/vs_enterprise.exe" -OutFile vs_enterprise.exe
       # 组件列表：https://docs.microsoft.com/en-us/visualstudio/install/workload-component-id-vs-enterprise?view=vs-2022
       # 命令行选项：https://docs.microsoft.com/en-us/visualstudio/install/use-command-line-parameters-to-install-visual-studio?view=vs-2022
-      - name: 安装需要的组件
+      # 镜像一般自带 MFC/ATL，先探一下，缺了才装：每次 push 都重装一遍太慢了。
+      - name: 准备 MSVC 与 MFC 组件
+        shell: pwsh
         run: |
+          $mfc = Get-ChildItem -Path "$env:ProgramFiles\Microsoft Visual Studio\2022\*\VC\Tools\MSVC\*\atlmfc" -Directory -ErrorAction SilentlyContinue
+          if ($mfc) { Write-Host "镜像已带 MFC/ATL，跳过安装"; exit 0 }
+          Write-Host "缺少 MFC/ATL，开始安装..."
+          Invoke-WebRequest "https://aka.ms/vs/17/release/vs_enterprise.exe" -OutFile vs_enterprise.exe
           Start-Process -Wait vs_enterprise.exe -ArgumentList "--quiet", "--force", "--norestart", `
           "--add", "Microsoft.VisualStudio.Component.VC.CoreIde", `
           "--add", "Microsoft.VisualStudio.Component.IntelliCode", `

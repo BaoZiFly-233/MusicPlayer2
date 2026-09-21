@@ -33,7 +33,16 @@ BoTapMusic JSON 歌单可完整保存虚拟地址、歌曲信息和 CUE 时间�
 
 需要 Visual Studio C++ 生成工具（MSVC v143、MFC）及 Windows SDK。
 
-本机（BoTapMusic 开发机）的生成工具装在 `D:\VSBuildTools`，没有注册到 `vswhere`，直接调用即可：
+一条命令就行，默认 Release x86：
+
+```bat
+scripts\build.bat              :: Release x86
+scripts\build.bat Release x64  :: 换配置和平台
+```
+
+脚本依次用 `VSINSTALL` 环境变量、`vswhere`、`D:\VSBuildTools` 定位 MSVC，找不到会提示怎么指定，不需要去记具体路径。
+
+要自己调 MSBuild 时，本机（BoTapMusic 开发机）的生成工具装在 `D:\VSBuildTools`，没有注册到 `vswhere`，直接调用即可：
 
 ```bat
 call "D:\VSBuildTools\VC\Auxiliary\Build\vcvarsall.bat" x86
