@@ -386,9 +386,22 @@ void COnlineMediaCache::Run(const shared_ptr<State>& state, Queue queue)
         }
         try { Process(state, work); }
         catch (const exception&) {
-            if (work.progress) work.progress->Finish(ProgressResult::Failed, L"无法完成下载，请重试");
-            lock_guard<mutex> guard(state->lock); state->status = L"下载失败";
-            if (!work.directory.empty()) { ++state->failed; state->downloads[work.track.virtual_path] = L"下载失败"; }
+            // 主动取消时下载路径也会抛出（等待被中断之类），那要记成「已取消」：
+            // 记成失败既会污染失败计数，也会盖掉用户看到的取消结论。
+            const bool cancelled = work.progress && work.progress->Cancelled();
+            if (work.progress)
+                work.progress->Finish(cancelled ? ProgressResult::Cancelled : ProgressResult::Failed,
+                    cancelled ? L"操作已取消" : L"无法完成下载，请重试");
+            lock_guard<mutex> guard(state->lock);
+            if (cancelled)
+            {
+                if (!work.directory.empty()) state->downloads[work.track.virtual_path] = L"已取消";
+            }
+            else
+            {
+                state->status = L"下载失败";
+                if (!work.directory.empty()) { ++state->failed; state->downloads[work.track.virtual_path] = L"下载失败"; }
+            }
         }
         lock_guard<mutex> guard(state->lock);
         active = false;

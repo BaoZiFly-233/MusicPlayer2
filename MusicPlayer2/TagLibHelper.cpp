@@ -1170,6 +1170,8 @@ bool CTagLibHelper::WriteMpegLyric(const std::wstring& file_path, const std::wst
 wstring CTagLibHelper::GetOggLyric(const wstring& file_path)
 {
     Ogg::Vorbis::File file(file_path.c_str());
+    // 文件打开失败时读标签会拿到不完整的状态，和 WriteOggLyric 一样先判有效
+    if (!file.isValid()) return L"";
     const auto properties = file.properties();
     return properties.contains("LYRICS") && !properties["LYRICS"].isEmpty() ? properties["LYRICS"].front().toWString() : L"";
 }

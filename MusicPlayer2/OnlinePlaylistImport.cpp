@@ -119,13 +119,22 @@ CandidateScore ScoreOne(const ImportTrack& source, const Track& candidate,
         Normalize(StripBrackets(candidate.title)));
     const int title_score = (max)(title_full, title_stripped);
 
-    // 歌手：拆成单个歌手后两两比，取最高的那一对
+    // 歌手：拆成单个歌手后两两比，取最高的那一对。
+    // 两边都要有值才算这一项，否则跳过 —— 否则「源曲没带歌手」会被比成 0 分，
+    // 然后被下面的硬淘汰判掉，整首歌永远匹配不上（实测外部导入和换源都会丢歌）。
     int artist_score = -1;
-    for (const auto& left : SplitArtists(StripBrackets(source.artist)))
+    const wstring source_artist = StripBrackets(source.artist);
+    const wstring candidate_artist = StripBrackets(candidate.artist);
+    if (!Normalize(source_artist).empty() && !Normalize(candidate_artist).empty())
     {
-        for (const auto& right : SplitArtists(StripBrackets(candidate.artist)))
+        for (const auto& left : SplitArtists(source_artist))
         {
-            artist_score = (max)(artist_score, Similarity(Normalize(left), Normalize(right)));
+            if (Normalize(left).empty()) continue;
+            for (const auto& right : SplitArtists(candidate_artist))
+            {
+                if (Normalize(right).empty()) continue;
+                artist_score = (max)(artist_score, Similarity(Normalize(left), Normalize(right)));
+            }
         }
     }
 

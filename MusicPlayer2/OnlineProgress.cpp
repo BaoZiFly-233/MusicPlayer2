@@ -73,7 +73,10 @@ std::shared_ptr<OnlineProgress> OnlineProgress::Start(const std::wstring& title,
         registry.cleaned = entry->value.started;
         std::erase_if(registry.entries, [&](const auto& old) {
             std::lock_guard<std::mutex> guard(old->mutex);
-            return old->value.finished && entry->value.started - old->value.finished >= 8000;
+            // 先比大小再相减：两个时间戳都是无符号数，并发下 old 可能比本任务还晚结束，
+            // 直接相减会下溢成一个很大的值，刚结束的任务会被立刻清掉。
+            return old->value.finished && old->value.finished <= entry->value.started
+                && entry->value.started - old->value.finished >= 8000;
         });
     }
     registry.entries.push_back(entry);
@@ -138,7 +141,8 @@ std::vector<ProgressSnapshot> OnlineProgress::Snapshot()
     std::erase_if(registry.entries, [&](const auto& entry) {
         std::lock_guard<std::mutex> guard(entry->mutex);
         const auto& value = entry->value;
-        if (value.finished && now - value.finished >= 8000) return true;
+        // 同理先比大小再相减，避免并发完成的任务因下溢被当成「早就结束」而立刻移出列表
+        if (value.finished && value.finished <= now && now - value.finished >= 8000) return true;
         result.push_back(value);
         return false;
     });

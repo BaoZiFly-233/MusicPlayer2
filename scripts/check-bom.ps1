@@ -1,11 +1,11 @@
-# 检查并修复本项目源文件的编码问题。
+﻿# 检查并修复本项目源文件的编码问题。
 #
 # 背景：这个项目要求源文件是 UTF-8 带 BOM。少了 BOM，MSVC 会按 GBK 解 UTF-8 的中文
 # 注释，字节被读坏后会报一堆看不懂的语法错误。
 #
 # 注意：仓库里有几十个上游文件本来就没有 BOM（它们要么是纯 ASCII，要么是 GBK 编码），
-# 那些文件能正常编译，不要去动。所以默认只检查「相对 git HEAD 有改动」的文件，
-# 也就是本次开发真正碰过的那些。想看全部就加 -All。
+# 那些文件能正常编译，不要去动。所以默认只检查「上游基点之后动过」的文件，
+# 也就是本分支真正碰过的那些（已提交和未提交都算）。想看全部就加 -All。
 #
 # 用法：
 #   pwsh -File scripts/check-bom.ps1          # 检查改动过的文件
@@ -27,7 +27,7 @@ if (-not (Test-Path $srcRoot)) {
 }
 
 # 第三方库不动（它们有自己的编码约定，且不该被改动）
-$skipDirs = @('taglib', 'scintilla', 'nlohmann', 'tinyxml2', 'qrcodegen', 'res', 'skins')
+$skipDirs = @('taglib', 'scintilla', 'nlohmann', 'tinyxml2', 'qrcodegen', 'puff', 'res', 'skins')
 
 $candidates = Get-ChildItem $srcRoot -Recurse -File |
     Where-Object { $_.Extension -in '.cpp', '.h', '.hpp', '.cxx' } |
@@ -36,15 +36,19 @@ $candidates = Get-ChildItem $srcRoot -Recurse -File |
         -not ($skipDirs | Where-Object { $rel -like "$_\*" })
     }
 
+# 仓库里的上游基点提交。默认只检查「这个基点之后动过的文件」。
+$baseCommit = '328af4cc'
+
 if (-not $All) {
-    # 只保留 git 里有改动（含未跟踪）的文件
-    $changed = & git -C $repoRoot status --porcelain -- MusicPlayer2 2>$null
+    # 范围 = 相对基点有改动的文件（已提交的也算）+ 未跟踪的新文件。
+    # 早先只看「相对 git 有未提交改动」，提交完就什么都查不到，护栏等于静默失效。
     $changedNames = @()
-    foreach ($line in $changed) {
-        if ($line.Length -gt 3) {
-            $path = $line.Substring(3).Trim().Trim('"')
-            $changedNames += (Split-Path $path -Leaf)
-        }
+    $tracked = & git -C $repoRoot diff --name-only $baseCommit -- MusicPlayer2 2>$null
+    if ($LASTEXITCODE -ne 0) { $tracked = @() }
+    $untracked = & git -C $repoRoot ls-files --others --exclude-standard -- MusicPlayer2 2>$null
+    foreach ($path in @($tracked) + @($untracked)) {
+        if ([string]::IsNullOrWhiteSpace($path)) { continue }
+        $changedNames += (Split-Path $path.Trim().Trim('"') -Leaf)
     }
     # 注意：即使改动列表为空也要过滤，否则会退化成检查全部文件
     $candidates = $candidates | Where-Object { $changedNames -contains $_.Name }
