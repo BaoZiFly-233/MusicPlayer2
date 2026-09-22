@@ -333,7 +333,9 @@ bool CKugouSource::Request(const wstring& url_path, const wstring& router,
         }
         catch (const json::exception&)
         {
-            return false;       // 返回的不是 JSON，多半是被拦截或接口变了
+            // 不写错误原因的话，上层会把空串存进失败备忘，界面什么都提示不了
+            m_last_error = L"K源响应格式无法识别，可能被拦截或接口有变动";
+            return false;
         }
     }
 
@@ -579,8 +581,10 @@ wstring CKugouSource::FetchPlayUrl(const wstring& hash, const wstring& album_aud
         if (!playback.retry_quality) return {};
     }
 
+    // 措辞别带「下架」「版权」这类字眼：注册层靠错误文案里的关键词判断「结论确定、
+    // 不再重试」，这里只是没拿到地址、原因未知，不该把重试的路堵死。
     if (m_last_error.empty())
-        m_last_error = L"暂时拿不到播放地址，可能这首歌已下架或接口有变动";
+        m_last_error = L"暂时拿不到播放地址，可能已无法在线播放或接口有变动";
 
     return wstring();
 }

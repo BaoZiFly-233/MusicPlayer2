@@ -416,7 +416,9 @@ inline KugouPlayback ParseKugouPlayback(const nlohmann::json& response, bool log
         else result.url = playable(*urls);
         if (!result.url.empty()) return result;
     }
-    result.error = L"K源未返回可播放地址，请稍后重试或检查曲目权限";
+    // 不提「权限」二字：注册层按文案关键词判断是否还要重试，这里原因未知，
+    // 让它保持可重试。
+    result.error = L"K源未返回可播放地址，请稍后再试";
     return result;
 }
 }
