@@ -47,7 +47,16 @@ void UiElement::NavigationBar::Draw()
         item_rects[index] = item_rect;
 
         if ((rect & item_rect).IsRectEmpty())
+        {
+            // 被裁剪掉的条目也要推进 x_pos 和 index，否则后面的槽位、
+            // 悬停与点击的命中测试都会错位
+            if (orientation == Horizontal)
+                x_pos = item_rect.right + ui->DPI(item_space);
+            else
+                y_pos = item_rect.bottom + ui->DPI(item_space);
+            index++;
             continue;
+        }
 
         //绘制背景
         if (hover_index == index)

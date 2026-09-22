@@ -11,7 +11,7 @@ void UiElement::Volume::Draw()
     CalculateRect();
 
     if (pressed)
-        rect.MoveToXY(rect.left + theApp.DPI(1), rect.top + theApp.DPI(1));
+        rect.MoveToXY(rect.left + ui->DPI(1), rect.top + ui->DPI(1));
 
     DrawAreaGuard guard(&ui->GetDrawer(), rect);
 

@@ -62,7 +62,14 @@ void UiElement::AbstractListElement::DrawScrollArea()
                 if (draw_hover_row_background)
                 {
                     if (m_client_area_rect.PtInRect(m_mouse_pos))
-                        is_selected_item = GetDisplayedIndexByPoint(m_mouse_pos) == i;
+                    {
+                        // GetDisplayedIndexByPoint 给的是显示序号，搜索过滤后和
+                        // 绝对行号 i 对不上，先把 i 换算成显示序号再比较
+                        const int hover_row = GetDisplayedIndexByPoint(m_mouse_pos);
+                        int display_row = i;
+                        AbsoluteRowToDisplayRow(display_row);
+                        is_selected_item = hover_row >= 0 && display_row == hover_row;
+                    }
                 }
                 else
                 {
@@ -397,16 +404,14 @@ bool UiElement::AbstractListElement::MouseMove(CPoint point)
             {
                 mouse_in_btn = true;
                 btn.hover = true;
-                static int last_row{ -1 };
-                static int last_btn_index{ -1 };
-                if (last_row != row || last_btn_index != i)
+                if (m_last_btn_tooltip_row != row || m_last_btn_tooltip_index != i)
                 {
                     std::wstring btn_tooltip{ GetHoverButtonTooltip(i, row) };
                     ui->UpdateMouseToolTip(GetToolTipIndex(), btn_tooltip.c_str());
                     ui->UpdateMouseToolTipPosition(GetToolTipIndex(), btn.rect);
                 }
-                last_row = row;
-                last_btn_index = i;
+                m_last_btn_tooltip_row = row;
+                m_last_btn_tooltip_index = i;
             }
             else
             {
@@ -420,10 +425,9 @@ bool UiElement::AbstractListElement::MouseMove(CPoint point)
     {
         if (row >= 0)
         {
-            static int last_row{ -1 };
-            if (last_row != row)
+            if (m_last_row_tooltip != row)
             {
-                last_row = row;
+                m_last_row_tooltip = row;
                 std::wstring str_tip = GetToolTipText(row);
 
                 ui->UpdateMouseToolTip(GetToolTipIndex(), str_tip.c_str());

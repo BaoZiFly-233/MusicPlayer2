@@ -578,8 +578,6 @@ bool CPlayerUIBase::ButtonClicked(BtnKey btn_type, const UIButton& btn)
         theApp.m_pMainWnd->SendMessage(WM_COMMAND, ID_LOCATE_TO_CURRENT);
         return true;
 
-    return true;
-
     case BTN_FIND:
         theApp.m_pMainWnd->SendMessage(WM_COMMAND, ID_FIND);
         return true;
@@ -1024,7 +1022,7 @@ std::wstring CPlayerUIBase::GetButtonText(BtnKey key_type) const
     case BTN_INFO: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_PROPERTY");
     case BTN_FIND: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_FIND_SONGS");
     case BTN_STOP: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_STOP");
-    case BTN_PREVIOUS: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_STOP");
+    case BTN_PREVIOUS: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_PREVIOUS");
     case BTN_PLAY_PAUSE: return theApp.m_str_table.LoadText(CPlayer::GetInstance().IsPlaying() ? L"UI_TIP_BTN_PAUSE" : L"UI_TIP_BTN_PLAY");
     case BTN_NEXT: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_NEXT");
     case BTN_SHOW_PLAYLIST: return theApp.m_str_table.LoadText(L"UI_TIP_BTN_PLAYLIST_SHOW_HIDE");
@@ -1317,8 +1315,8 @@ void CPlayerUIBase::DrawUIButton(const CRect& rect, UIButton& btn, IconMgr::Icon
     btn.rect = rect;
 
     CRect rc_tmp = rect;
-    if (btn.pressed && btn.enable)
-        rc_tmp.MoveToXY(rect.left + theApp.DPI(1), rect.top + theApp.DPI(1));
+                if (btn.pressed && btn.enable)
+                    rc_tmp.MoveToXY(rect.left + DPI(1), rect.top + DPI(1));
 
     //rc_tmp.DeflateRect(DPI(2), DPI(2));
     //m_draw.SetDrawArea(rc_tmp);
@@ -1570,7 +1568,8 @@ void CPlayerUIBase::SetRepeatModeToolTipText()
 
 void CPlayerUIBase::SetSongInfoToolTipText()
 {
-    const SongInfo& songInfo = CPlayer::GetInstance().GetCurrentSongInfo();
+    // 播放列表载入中 GetCurrentSongInfo 会读到正在变动的容器，用带保护的版本
+    const SongInfo& songInfo = CPlayer::GetInstance().GetSafeCurrentSongInfo();
 
     m_info_tip = theApp.m_str_table.LoadText(L"UI_TIP_BTN_PROPERTY") + GetCmdShortcutKeyForTooltips(ID_SONG_INFO).GetString() + L"\r\n";
     m_info_tip += theApp.m_str_table.LoadText(L"TXT_TITLE") + L": " + songInfo.GetTitle() + L"\r\n";
@@ -1853,7 +1852,10 @@ CRect CPlayerUIBase::DrawProgess(CRect rect)
     else
         m_draw.FillRect(rect, m_colors.color_progress_back);
 
-    double progress = static_cast<double>(CPlayer::GetInstance().GetCurrentPosition()) / CPlayer::GetInstance().GetSongLength();
+    // 时长为 0（未就绪的在线曲目等）时除出来是 NaN，转 int 是未定义行为，按 0 处理
+    const double song_length = CPlayer::GetInstance().GetSongLength();
+    double progress = song_length > 0
+        ? static_cast<double>(CPlayer::GetInstance().GetCurrentPosition()) / song_length : 0;
     if (progress > 1)
         progress = 1;
     double progress_width_double{ progress * rect.Width() };
@@ -2615,7 +2617,7 @@ void CPlayerUIBase::DrawUiMenuBar(CRect rect)
 
             CRect rc_cur_item{ btn.rect };
             if (btn.pressed && btn.enable)
-                rc_cur_item.OffsetRect(theApp.DPI(1), theApp.DPI(1));
+                rc_cur_item.OffsetRect(DPI(1), DPI(1));
 
             //绘制背景
             if (btn.pressed || btn.hover)

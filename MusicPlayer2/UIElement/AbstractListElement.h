@@ -116,6 +116,11 @@ namespace UiElement
         SearchBox* related_search_box{};    //关联的键框
         mutable std::recursive_mutex m_selection_mutex;     //保护items_selected的互斥量
         CPoint m_mouse_pos;
+        // tooltip 只在行/按钮变化时才刷新：原来是函数内 static，所有列表实例共享，
+        // 从一个列表移到另一个列表的同一行时提示不会更新。改成成员，各实例独立。
+        int m_last_btn_tooltip_row{ -1 };
+        int m_last_btn_tooltip_index{ -1 };
+        int m_last_row_tooltip{ -1 };
 
         std::function<void(AbstractListElement*)> m_selection_changed_trigger;
 

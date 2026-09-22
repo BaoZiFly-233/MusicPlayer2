@@ -426,7 +426,7 @@ void CUIDrawer::DrawSpectrum(CRect rect, int col_width, int gap_width, int cols,
             index = i;
         }
         if (index >= cols)
-            index = cols;
+            index = cols - 1;   // 原来写成 cols，恰好触发时会越界读到频谱数组外一格
         if (index < 0)
             index = 0;
         float spetral_data = CPlayer::GetInstance().GetSpectralData()[index * (SPECTRUM_COL / cols)];
