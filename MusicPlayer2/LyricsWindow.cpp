@@ -357,7 +357,7 @@ void CLyricsWindow::DrawLyrics(Gdiplus::Graphics* pGraphics)
         }
 	}
 
-	DrawLyricText(pGraphics, m_lpszLyrics, dstRect, true, false, m_lyric_karaoke_disp);		// 是当前歌词，不是翻译，开启卡拉OK模式时高亮
+	DrawLyricText(pGraphics, m_lpszLyrics, dstRect, true, false, true);		// 是当前歌词，不是翻译，开启卡拉OK模式时高亮
 	if (bDrawTranslate)
 		DrawLyricText(pGraphics, m_strTranslate, transRect, true, true, false);				// 是当前歌词，是翻译，不绘制高亮
 }

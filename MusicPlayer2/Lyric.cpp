@@ -779,19 +779,21 @@ int CLyrics::GetLyricLrcProgress(CPlayTime time) const
     int lyric_last_time{ 1 };           // time时间所在的歌词持续的时间
     int lyric_current_time{ 0 };        // 当前歌词在time时间时已经持续的时间
     int progress{};
+    // 用加了偏移的 time_start 而不是 time_start_raw：用户调过「歌词提前/延迟」后，
+    // 外部进程（皮肤、兼容模式）的进度要跟界面显示的行对齐，否则两边错开一个偏移量。
     for (size_t i{ 0 }; i < m_lyrics.size(); i++)
     {
-        if (CPlayTime(m_lyrics[i].time_start_raw) > time)
+        if (CPlayTime(m_lyrics[i].time_start) > time)
         {
             if (i == 0)
             {
                 lyric_current_time = time.toInt();
-                lyric_last_time = m_lyrics[i].time_start_raw;
+                lyric_last_time = m_lyrics[i].time_start;
             }
             else
             {
-                lyric_last_time = m_lyrics[i].time_start_raw - m_lyrics[i - 1].time_start_raw;
-                lyric_current_time = time - m_lyrics[i - 1].time_start_raw;
+                lyric_last_time = m_lyrics[i].time_start - m_lyrics[i - 1].time_start;
+                lyric_current_time = time - m_lyrics[i - 1].time_start;
             }
             if (lyric_last_time == 0) lyric_last_time = 1;
             progress = lyric_current_time * 1000 / lyric_last_time;
@@ -799,7 +801,7 @@ int CLyrics::GetLyricLrcProgress(CPlayTime time) const
         }
     }
     // 如果最后一句歌词之后已经没有时间标签，该句歌词默认显示20秒
-    lyric_current_time = time - m_lyrics[m_lyrics.size() - 1].time_start_raw;
+    lyric_current_time = time - m_lyrics[m_lyrics.size() - 1].time_start;
     lyric_last_time = 20000;
     progress = lyric_current_time * 1000 / lyric_last_time;
     if (progress > 1000) progress = 1000;

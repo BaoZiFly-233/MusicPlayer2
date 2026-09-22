@@ -953,6 +953,9 @@ inline bool RunOnlineMusicTests(const std::wstring& log_path, bool network)
         // 第二行的字时间要加上行起始 1000ms
         check(converted.find(L"[00:01.000]<00:01.000>EF<00:01.500>GH<00:02.000>") != std::wstring::npos,
             "krc second line offsets by line start");
+        // 行尾要补结束标签：最后一个字唱完后留白不再被填色
+        check(converted.find(L"<00:00.300>CD<00:01.000>") != wstring::npos,
+            "krc pads a trailing empty tag at line end");
         // 元数据行不该被当成歌词
         check(converted.find(L"ti:") == std::wstring::npos, "krc metadata lines skipped");
         // 转换结果要能被播放器自己的歌词解析器认出来，并且识别为逐字

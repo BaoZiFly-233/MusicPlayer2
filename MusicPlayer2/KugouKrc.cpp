@@ -179,6 +179,7 @@ wstring KrcToExtendedLyric(const string& krc_utf8)
         // 逐字标签 <相对起始ms,字时长ms,0>文字 …
         wstring converted_words;
         int word_count = 0;
+        int last_word_end = -1;     // 上一个字的结束时间（绝对 ms）
         while (pos < line.size() && line[pos] == L'<')
         {
             const size_t tag_begin = pos;
@@ -201,9 +202,25 @@ wstring KrcToExtendedLyric(const string& krc_utf8)
             while (pos < line.size() && line[pos] != L'<') ++pos;
             const wstring word = line.substr(text_begin, pos - text_begin);
 
-            // KRC 给的是相对本行起始的时间，扩展 LRC 要绝对时间
-            converted_words += L"<" + FormatTime(line_start_ms + word_offset) + L">" + word;
+            // KRC 给的是相对本行起始的时间，扩展 LRC 要绝对时间。
+            // 和 B 源的 LRCX 转换同口径：字与字之间有停顿就补结束标签，
+            // 让卡拉OK填色停在字尾，而不是把字间隙一起填满。
+            const int word_start = line_start_ms + word_offset;
+            int word_end = word_start + word_span;
+            if (word_end < word_start) word_end = word_start;
+            if (last_word_end >= 0 && word_start > last_word_end)
+                converted_words += L"<" + FormatTime(last_word_end) + L">";
+            converted_words += L"<" + FormatTime(word_start) + L">" + word;
+            last_word_end = word_end;
             ++word_count;
+        }
+
+        // 句尾补一个结束标签：最后一个字唱完到行尾之间的留白也要让填色停住
+        if (last_word_end >= 0)
+        {
+            int line_end = line_start_ms + line_span_ms;
+            if (line_end < last_word_end) line_end = last_word_end;
+            converted_words += L"<" + FormatTime(line_end) + L">";
         }
 
         if (word_count == 0) continue;
