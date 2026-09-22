@@ -660,7 +660,10 @@ bool CBodianSource::ClaimAdFreeTime(int& seconds, wstring& detail)
         + L"&sign=" + FromUtf8(QuerySignature(path, query, body));
 
     bool accepted = post(fresh_url) && online::JsonNumber(response, "code") == 200;
-    if (!accepted)
+    // 只有第一次被服务端明确拒绝（拿到响应且 code 不是 200）才换固定 query 重试。
+    // 连响应都没拿到（超时、断连）或响应解析失败时，服务端可能已经记了账，
+    // 这时再发一次会把当天的次数重复扣掉，宁可这次不领，等下一次循环再试。
+    if (!accepted && online::JsonNumber(response, "code") != 0)
     {
         const wstring fixed_url = wstring(L"https://") + API_HOST + path + L"?" + FromUtf8(AD_FIXED_QUERY);
         accepted = post(fixed_url) && online::JsonNumber(response, "code") == 200;
@@ -908,17 +911,20 @@ bool CBodianSource::RunEarningCycle(int& balance, int& claimed_count, int& claim
     if (data.contains("userInfo") && data["userInfo"].is_object())
         balance = static_cast<int>(online::JsonNumber(data["userInfo"], "balance"));
 
-    // 听歌任务：九级阶梯，服务端不核对真实时长，逐个上报即可
+    // 听歌任务：九级阶梯，服务端不核对真实时长，逐个上报即可。
+    // 中途有网络失败就让整个周期返回失败，当天不算完成，下次还能补领。
     vector<EarningTask> tasks;
+    bool ok = true;
     if (GetEarningTasks(tasks))
     {
         for (const auto& task : tasks)
         {
             bool awarded = false;
-            if (!ClaimEarningTask(L"listen", task.id, awarded)) break;
+            if (!ClaimEarningTask(L"listen", task.id, awarded)) { ok = false; break; }
             if (awarded) { ++claimed_count; claimed_gold += task.gold; }
         }
     }
+    else ok = false;    // 连任务列表都拿不到，多半是网络问题
 
     // 签到任务：只有轮到的那一天会发放，其余返回 code 1 被跳过
     if (data.contains("popup") && data["popup"].is_object())
@@ -932,7 +938,8 @@ bool CBodianSource::RunEarningCycle(int& balance, int& claimed_count, int& claim
                 const int gold = static_cast<int>(online::JsonNumber(item, "gold"));
                 if (id <= 0) continue;
                 bool awarded = false;
-                if (ClaimEarningTask(L"sign", id, awarded) && awarded) { ++claimed_count; claimed_gold += gold; }
+                if (!ClaimEarningTask(L"sign", id, awarded)) { ok = false; break; }
+                if (awarded) { ++claimed_count; claimed_gold += gold; }
             }
         }
     }
@@ -948,7 +955,7 @@ bool CBodianSource::RunEarningCycle(int& balance, int& claimed_count, int& claim
     detail = claimed_count > 0
         ? L"领到 " + to_wstring(claimed_count) + L" 项共 " + to_wstring(claimed_gold) + L" 金币，余额 " + to_wstring(balance)
         : L"今天的金币已经领完，余额 " + to_wstring(balance);
-    return true;
+    return ok;
 }
 
 

@@ -221,7 +221,9 @@ void COnlineDailyRewards::Request(bool automatic)
                 status += L"\n广告奖励：" + (ad_done > 0
                     ? L"本次 " + to_wstring(ad_done) + L" 次，共 +" + to_wstring(ad_hours) + L" 小时会员"
                     : (ad_note.empty() ? wstring(L"今天没有可领的次数") : ad_note));
-                if (!ad_note.empty()) confirmed_reward = false;
+                // 广告这一段失败不推翻上面的结论：每日会员已经确认到账的话，
+                // 整体还按成功收尾，广告的问题写在 status 里，不然用户会以为会员没领到。
+                // （上面的注释「失败了也不影响上面的结果」说的就是这个意思。）
             }
             catch (const exception&) { confirmed_reward = false; status = L"领取状态无法确认，请稍后查看记录；未自动重试提交"; }
             progress->Finish(confirmed_reward ? ProgressResult::Succeeded : ProgressResult::Failed, status);
