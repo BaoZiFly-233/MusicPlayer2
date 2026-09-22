@@ -136,7 +136,10 @@ public:
             else if (test.detail == 6)
             {
                 model.m_state.detail_visible = false;
-                model.m_state.status = L"正在换源 · 37 / 100";
+                // 用真实的状态栏文案（换源时状态栏写的是作用范围，阶段性进度在底部任务条上）。
+                // 以前这里写成和任务计数一样的「正在换源 · 37 / 100」，截图里同一句话出现两遍，
+                // 看着像界面真的重复了。
+                model.m_state.status = L"正在把 100 首重新匹配到B源…";
             }
             else if (test.detail == 7)
             {
@@ -245,9 +248,16 @@ public:
                     check(skin->m_activity_offset == 1, "wheel reveals remaining tasks");
                     skin->MouseWheel(120, card); skin->DrawInfo(true);
                     check(skin->m_activity_offset == 0, "wheel returns to the active task");
-                    const auto cancel = skin->m_activity_cancel_rects.front().first.CenterPoint();
-                    skin->LButtonDown(cancel); skin->LButtonUp(cancel); skin->DrawInfo(true);
-                    check(preview_progress.front()->Cancelled(), "cancel targets the displayed task");
+                    // 行内的取消按钮和列表的行内按钮一个规矩：鼠标进到任务区才画出来。
+                    // 所以先模拟一次鼠标进入，再取它注册出来的热区。
+                    skin->MouseMove(card); skin->DrawInfo(true);
+                    check(!skin->m_activity_cancel_rects.empty(), "hovering the activity area reveals the cancel button");
+                    if (!skin->m_activity_cancel_rects.empty())
+                    {
+                        const auto cancel = skin->m_activity_cancel_rects.front().first.CenterPoint();
+                        skin->LButtonDown(cancel); skin->LButtonUp(cancel); skin->DrawInfo(true);
+                        check(preview_progress.front()->Cancelled(), "cancel targets the displayed task");
+                    }
                 }
             }
             dc.Detach(); canvas.ReleaseDC();

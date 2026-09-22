@@ -14,6 +14,10 @@
 #include "PlayerFormulaHelper.h"
 #include "WinVersionHelper.h"
 
+// 在线任务失败时轨道用的那抹红。调色板里没有「错误色」这一项（加一项等于改皮肤接口，
+// 所有皮肤都得跟着补），所以在这里具名固定下来，别让数值散落在绘制逻辑里。
+static const COLORREF ACTIVITY_FAILED_COLOR = RGB(207, 87, 82);
+
 bool CPlayerUIBase::m_show_ui_tip_info = false;
 
 CPlayerUIBase::CPlayerUIBase(UIData& ui_data, CWnd* pMainWnd)
@@ -217,25 +221,42 @@ void CPlayerUIBase::DrawOnlineProgress(const std::vector<online::ProgressSnapsho
         const auto& task = tasks[index];
         CRect band = m_activity_rect;
         band.top += row * row_height; band.bottom = band.top + row_height;
-        const COLORREF accent = task.result == online::ProgressResult::Failed ? RGB(207, 87, 82)
+        // 行之间补一条细分隔线。不画的话每行只剩标题和它下面的轨道，
+        // 多任务展开时看着像几行带下划线的文字，分不清哪条轨道属于哪一行。
+        if (row > 0)
+            m_draw.FillRect(CRect(band.left + DPI(10), band.top, band.right - DPI(10), band.top + 1),
+                m_colors.color_progress_back);
+        const COLORREF accent = task.result == online::ProgressResult::Failed ? ACTIVITY_FAILED_COLOR
             : task.result == online::ProgressResult::Cancelled ? m_colors.color_text : m_colors.color_spectrum;
         CRect line(band.left + DPI(10), band.top + DPI(2), band.right - DPI(8), band.top + DPI(22));
-        if (row == 0 && tasks.size() > 1)
-        {
-            m_activity_expand_rect = line;
-            m_activity_expand_rect.left = line.right - DPI(92);
-            const auto label = std::to_wstring(index + 1) + L" / " + std::to_wstring(tasks.size())
-                + (m_activity_expanded ? L"  收起 ▴" : L"  展开 ▾");
-            m_draw.DrawWindowText(m_activity_expand_rect, label.c_str(), m_colors.color_text_heighlight, Alignment::RIGHT, false);
-            line.right = m_activity_expand_rect.left - DPI(8);
-        }
-        if (!task.Running() || task.cancellable)
+        // 单行时一直显示取消；展开成多行后只在鼠标进到任务区时才显示，
+        // 否则每行右侧要挤下计数、取消和展开三样东西。
+        // 取消放在最右端：它每行都有，对齐成一列才找得到；展开/收起只有首行有，
+        // 让它排在取消左边，不然首行的取消会比其它行靠左一截。
+        const bool show_cancel = (!task.Running() || task.cancellable)
+            && (m_activity_rows <= 1 || m_activity_hover);
+        if (show_cancel)
         {
             CRect cancel = line;
-            cancel.left = line.right - DPI(20);
+            cancel.left = line.right - DPI(18);
             m_activity_cancel_rects.emplace_back(cancel, task.id);
-            m_draw.DrawWindowText(cancel, L"×", m_colors.color_text, Alignment::CENTER, false);
+            DrawUiIcon(CRect(cancel.left, cancel.top + DPI(2), cancel.right, cancel.top + DPI(18)),
+                IconMgr::IT_Close);
             line.right = cancel.left - DPI(6);
+        }
+        if (row == 0 && tasks.size() > 1)
+        {
+            // 展开/收起改用三角形图标，和皮肤其它地方的图标一致（原来是 ▴/▾ 文本）。
+            // 文字要停在图标左边，别和它抢同一段宽度。
+            const CRect triangle(line.right - DPI(16), line.top + DPI(2), line.right, line.top + DPI(18));
+            m_activity_expand_rect = line;
+            m_activity_expand_rect.right = triangle.left - DPI(4);
+            m_activity_expand_rect.left = (std::max)(line.left, m_activity_expand_rect.right - DPI(84));
+            const auto label = std::to_wstring(index + 1) + L" / " + std::to_wstring(tasks.size())
+                + (m_activity_expanded ? L"  收起" : L"  展开");
+            m_draw.DrawWindowText(m_activity_expand_rect, label.c_str(), m_colors.color_text_heighlight, Alignment::RIGHT, false);
+            DrawUiIcon(triangle, m_activity_expanded ? IconMgr::IT_Triangle_Up : IconMgr::IT_Triangle_Down);
+            line.right = m_activity_expand_rect.left - DPI(8);
         }
         const auto counter = task.Counter();
         const int counter_width = (std::min<int>)(m_draw.GetTextExtent(counter.c_str()).cx + DPI(4), line.Width() / 2);
@@ -259,7 +280,7 @@ void CPlayerUIBase::DrawOnlineProgress(const std::vector<online::ProgressSnapsho
             detail.right = elapsed.left - DPI(8);
             m_draw.DrawWindowText(detail, phase.c_str(), m_colors.color_text, Alignment::LEFT, false);
         }
-        CRect rail(band.left + DPI(10), band.bottom - DPI(3), band.right - DPI(10), band.bottom - DPI(1));
+        CRect rail(band.left + DPI(10), band.bottom - DPI(4), band.right - DPI(10), band.bottom - DPI(2));
         m_draw.FillRect(rail, m_colors.color_progress_back);
         CRect fill = rail;
         const int percent = task.Percent();
@@ -329,7 +350,16 @@ bool CPlayerUIBase::MouseMove(CPoint point)
 {
     {
         std::lock_guard<std::mutex> lock(m_activity_mutex);
-        if (m_activity_rect.PtInRect(point)) return true;
+        if (m_activity_rect.PtInRect(point))
+        {
+            m_activity_hover = true;
+            m_activity_cancel_hover = 0;
+            for (const auto& [rect, id] : m_activity_cancel_rects)
+                if (rect.PtInRect(point)) { m_activity_cancel_hover = id; break; }
+            return true;
+        }
+        m_activity_hover = false;
+        m_activity_cancel_hover = 0;
     }
     bool rtn = false;
     for (auto& btn : m_buttons)
@@ -781,6 +811,11 @@ bool CPlayerUIBase::SetCursor()
 
 bool CPlayerUIBase::MouseLeave()
 {
+    {
+        std::lock_guard<std::mutex> lock(m_activity_mutex);
+        m_activity_hover = false;
+        m_activity_cancel_hover = 0;
+    }
     for (auto& btn : m_buttons)
     {
         btn.second.hover = false;

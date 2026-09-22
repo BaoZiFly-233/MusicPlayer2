@@ -335,7 +335,11 @@ private:
     std::vector<std::pair<CRect, std::uint64_t>> m_activity_cancel_rects;
     int m_activity_rows{}, m_activity_offset{}, m_activity_count{};
     bool m_activity_expanded{}, m_activity_pressed{};
+    // 鼠标是否停在任务区上。展开多任务时，行内的取消按钮只在鼠标进到任务区后才画出来，
+    // 免得每行右侧都挤着「计数 + 取消 + 展开」三样东西（和列表的行内按钮一个规矩）。
+    bool m_activity_hover{};
     std::uint64_t m_activity_cancel_pressed{};
+    std::uint64_t m_activity_cancel_hover{};
 };
 
 //用于在UI中设置字体。
