@@ -167,7 +167,7 @@ int CRecentList::RemoveItemIf(std::function<bool(const ListItem& list_item)> fun
     size_t size = m_list.size();
     ASSERT(!m_list.empty());
     m_list.remove_if([&](const ListItem& list_item) -> bool
-        { return func(list_item) && list_item != m_list.front() && IsSpecPlaylist(list_item, PT_DEFAULT) && IsSpecPlaylist(list_item, PT_FAVOURITE); });
+        { return func(list_item) && list_item != m_list.front() && !IsSpecPlaylist(list_item, PT_DEFAULT) && !IsSpecPlaylist(list_item, PT_FAVOURITE); });
     size -= m_list.size();
     m_ver += size;
     return size;

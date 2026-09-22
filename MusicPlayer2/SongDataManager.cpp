@@ -112,7 +112,12 @@ void CSongDataManager::LoadSongData(std::wstring path)
             ar >> size_1;
             size = static_cast<int>(size_1);
         }
-        m_song_data.reserve(size);
+        // 数量来自存档文件：损坏的文件可能给出巨大或负的值，不设上限的话
+        // reserve 直接 bad_alloc，启动就崩（外层只接 CArchiveException，接不住这个）。
+        if (size > 0 && size < 1000000)
+            m_song_data.reserve(size);
+        else
+            size = 0;
         for (int i{}; i < size; i++)
         {
             ar >> temp;
@@ -479,5 +484,6 @@ void CSongDataManager::ChangeFilePath(const wstring& file_path, const wstring& n
         if (!song.file_path.empty())
             song.file_path = new_path;
         m_song_data[new_path] = song;
+        m_song_data_modified = true;    // 不置脏的话，只改路径的修改不会落盘，重启就丢
     }
 }
