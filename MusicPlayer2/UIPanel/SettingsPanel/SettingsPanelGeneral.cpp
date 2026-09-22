@@ -47,7 +47,9 @@ void CSettingsPanelGeneral::Init()
     online_service_netease_btn->SetClickedTrigger([&](UiElement::AbstractToggleButton* sender) {
         OnOnlineServiceRadioBtnClicked(sender);
     });
-    online_service_qqmusic_btn = m_root_element->FindElement<UiElement::RadioButton>("onlineServiceNetEaseBtn");
+    // 这里原来是网易按钮的 ID，复制上一行时忘了改：QQ 音乐单选点了没反应，
+    // QQ 歌词源在新设置面板里永远选不上。
+    online_service_qqmusic_btn = m_root_element->FindElement<UiElement::RadioButton>("onlineServiceQQMusicBtn");
     online_service_qqmusic_btn->SetClickedTrigger([&](UiElement::AbstractToggleButton* sender) {
         OnOnlineServiceRadioBtnClicked(sender);
     });
