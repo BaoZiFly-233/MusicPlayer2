@@ -1215,10 +1215,23 @@ inline bool RunOnlineMediaIntegrationTest(const std::wstring& log_path, const st
             {
                 const auto seconds = BASS_ChannelBytes2Seconds(stream, BASS_ChannelGetLength(stream, BASS_POS_BYTE));
                 std::vector<float> pcm(44100 * 4);
-                const auto bytes = BASS_ChannelGetData(stream, pcm.data(), static_cast<DWORD>(pcm.size() * sizeof(float)));
-                bool signal = bytes != static_cast<DWORD>(-1) && bytes > 0
-                    && std::any_of(pcm.begin(), pcm.begin() + bytes / sizeof(float), [](float value) { return std::isfinite(value) && std::fabs(value) > 0.00001f; });
-                decoded = seconds > 30 && signal;
+                // 开头几秒可能整段都接近静音（比如选到《波莱罗》这种弱起的长曲），
+                // 和上面的播放自检一样逐段读，最多扫约 15 秒找非静音样本。
+                bool signal = false;
+                DWORD bytes = 0;
+                std::uint64_t decoded_bytes = 0;
+                const ULONGLONG decode_deadline = GetTickCount64() + 10000;
+                do
+                {
+                    bytes = BASS_ChannelGetData(stream, pcm.data(), static_cast<DWORD>(pcm.size() * sizeof(float)));
+                    if (bytes == static_cast<DWORD>(-1)) break;
+                    if (bytes == 0) { Sleep(50); continue; }
+                    decoded = true;
+                    decoded_bytes += bytes;
+                    for (size_t i = 0; i < bytes / sizeof(float); ++i)
+                        if (std::isfinite(pcm[i]) && std::fabs(pcm[i]) > 0.00001f) { signal = true; break; }
+                } while (!signal && decoded_bytes < 44100ull * 2 * sizeof(float) * 15 && GetTickCount64() < decode_deadline);
+                decoded = decoded && seconds > 30 && signal;
                 log << "cached_duration_seconds=" << seconds << "\nnon_silent_signal=" << signal << '\n';
                 BASS_StreamFree(stream);
             }
