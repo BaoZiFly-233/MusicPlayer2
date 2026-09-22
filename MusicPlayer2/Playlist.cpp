@@ -74,7 +74,9 @@ bool CPlaylistFile::LoadFromFile(const wstring & file_path)
                     song.is_cue = value.value("is_cue", false);
                     song.start_pos.fromInt(value.value("start_ms", 0));
                     song.end_pos.fromInt(value.value("end_ms", 0));
-                    if (song.start_pos.toInt() < 0 || song.end_pos.toInt() < song.start_pos.toInt()) return false;
+                    // cue 时间不自洽的条目跳过，别整表拒载：手工编辑过的歌单里
+                    // 一条坏数据不该让整份歌单都打不开，其它格式本来也不做这个校验。
+                    if (song.start_pos.toInt() < 0 || song.end_pos.toInt() < song.start_pos.toInt()) continue;
                     song.track = value.value("track", 0);
                     song.cue_file_path = CCommon::StrToUnicode(value.value("cue_path", ""), CodeType::UTF8);
                     songs.push_back(song);
@@ -149,9 +151,18 @@ bool CPlaylistFile::SavePlaylistToFile(const vector<SongInfo>& song_list, const 
     else if (type == PL_JSON)
     {
         nlohmann::json root = {{"format", "BoTapMusic"}, {"version", 1}, {"songs", nlohmann::json::array()}};
-        for (const auto& song : song_list)
+        for (const auto& item : song_list)
         {
-            if (song.file_path.empty()) continue;
+            if (item.file_path.empty()) continue;
+            // 和 m3u、.playlist 一样先从媒体库补全：song_list 可能来自 LoadFromFile
+            // 的信息不全的条目（比如 m3u），不补全的话导出的 JSON 标题歌手全是空的。
+            SongInfo song = CSongDataManager::GetInstance().GetSongInfo3(item);
+            if (song.IsTagEmpty())
+                song.CopyAudioTag(item);
+            // 载入侧会跳过 end<start 的条目，导出时别把这种时间写出去，否则这份
+            // JSON 自己都读不回来，等于把歌单弄丢。
+            if (song.start_pos.toInt() < 0) song.start_pos.fromInt(0);
+            if (song.end_pos.toInt() < song.start_pos.toInt()) song.end_pos.fromInt(song.start_pos.toInt());
             auto utf8 = [](const wstring& text) { return CCommon::UnicodeToStr(text, CodeType::UTF8_NO_BOM); };
             root["songs"].push_back({{"path", utf8(song.file_path)}, {"title", utf8(song.title)},
                 {"artist", utf8(song.artist)}, {"album", utf8(song.album)}, {"is_cue", song.is_cue},
