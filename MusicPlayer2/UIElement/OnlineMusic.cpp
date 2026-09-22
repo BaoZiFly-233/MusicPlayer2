@@ -1,5 +1,7 @@
 ﻿#include "stdafx.h"
 #include "OnlineMusic.h"
+#include "resource.h"
+#include "TinyXml2Helper.h"
 #include "UserUi.h"
 #include "Player.h"
 #include "UiSearchBox.h"
@@ -19,31 +21,29 @@ void OnlineMusicList::SetSnapshot(std::shared_ptr<const Model::State> state)
     m_state = std::move(state);
     // 列表里混了本地文件和在线曲目（或两个平台混在一起）时，标题列要标出来源；
     // 只含单一来源时不标，免得满屏都是重复标签。判断一次就够，不必每行都算。
-    int origin{ -1 };
+    // 来源短名在发布快照时就算好了，这里只是比一比，不再逐行解析地址。
+    const std::wstring* first_origin = nullptr;
     m_mixed_origins = false;
-    for (const auto& song : m_state->songs)
+    for (const auto& origin : m_state->row_origins)
     {
-        if (song.file_path.empty()) continue;
-        const int current = online::CSourceRegistry::OriginIndex(song.file_path);
-        if (origin < 0) origin = current;
-        else if (origin != current) { m_mixed_origins = true; break; }
+        if (origin.empty()) continue;
+        if (first_origin == nullptr) first_origin = &origin;
+        else if (*first_origin != origin) { m_mixed_origins = true; break; }
     }
 }
 // 一行歌曲的来源短名（本地 / K源 / B源）。来源只看地址本身。
 std::wstring OnlineMusicList::RowOrigin(int row) const
 {
     // 专辑、歌单、榜单这类行没有音频地址，不属于任何来源，不能给它们贴上「本地」
-    if (!m_state || row < 0 || row >= static_cast<int>(m_state->songs.size())
-        || m_state->songs[row].file_path.empty()) return {};
-    return online::CSourceRegistry::OriginLabel(m_state->songs[row].file_path);
+    if (!m_state || row < 0 || row >= static_cast<int>(m_state->row_origins.size())) return {};
+    return m_state->row_origins[row];
 }
 IconMgr::IconType OnlineMusicList::GetIcon(int row)
 {
     // 本地文件用音符、在线曲目用地球：来源最粗的一档始终可见，窄屏也挤不掉
-    if (!m_state || row < 0 || row >= static_cast<int>(m_state->songs.size())
-        || m_state->songs[row].file_path.empty()) return IconMgr::IT_NO_ICON;
-    return online::CSourceRegistry::IsVirtualPath(m_state->songs[row].file_path)
-        ? IconMgr::IT_Online : IconMgr::IT_Music;
+    if (!m_state || row < 0 || row >= static_cast<int>(m_state->row_online.size())) return IconMgr::IT_NO_ICON;
+    if (m_state->songs[row].file_path.empty()) return IconMgr::IT_NO_ICON;
+    return m_state->row_online[row] ? IconMgr::IT_Online : IconMgr::IT_Music;
 }
 bool OnlineMusicList::IsSavedRow(int row) const
 {
@@ -131,8 +131,11 @@ int OnlineMusicList::GetRowCount() { return m_state ? static_cast<int>(m_state->
 //   4 列（窄）序号 | 标题 | 艺术家 · 专辑 | 时长
 int OnlineMusicList::GetColumnCount()
 {
-    if (rect.Width() >= ui->DPI(620)) return 6;
-    return rect.Width() >= ui->DPI(480) ? 5 : 4;
+    // 用「列实际能用的宽度」判列数，而不是整个 rect：基类是从左边距 + 来源图标 + 文字留白
+    // （共 DPI(24)）之后才开始排列的，拿整个宽度判会在阈值附近多分一列，把最后一列挤掉。
+    const int available = rect.Width() - ui->DPI(24);
+    if (available >= ui->DPI(620)) return 6;
+    return available >= ui->DPI(480) ? 5 : 4;
 }
 int OnlineMusicList::GetColumnWidth(int col, int width)
 {
@@ -164,11 +167,13 @@ std::wstring OnlineMusicList::GetItemText(int row, int col)
         const std::wstring origin = RowOrigin(row);
         return origin.empty() ? item.title : L"[" + origin + L"] " + item.title;
     }
-    // 窄屏放不下专辑列，把艺术家与专辑并到同一列
+    // 窄屏（4 列）这一列只放艺术家。早先是把「艺术家 · 专辑」拼在一起，
+    // 但这一列本来就只有三成宽度，拼起来必然被截成「城市室内乐团 · 日常旋…」，
+    // 两样都看不全；歌曲识别主要靠艺术家，专辑留在行提示里。
     if (col == 2)
     {
-        if (count > 4 || item.track.album.empty()) return item.subtitle;
-        return item.subtitle.empty() ? item.track.album : item.subtitle + L" · " + item.track.album;
+        if (count > 4) return item.subtitle;
+        return item.subtitle.empty() ? item.track.album : item.subtitle;
     }
     if (col == 3 && count >= 5) return item.track.album;
     if (col == 4 && count >= 6)
@@ -522,10 +527,37 @@ void OnlineMusicDetail::DrawScrollArea()
     CRect text_rect = m_scroll_area_rect; text_rect.DeflateRect(ui->DPI(8), ui->DPI(8));
     bool beside = rect.Width() >= ui->DPI(520);
     if (beside && m_state->qr_size) text_rect.right -= ui->DPI(236);
+    // 「标签：值」这样的行按两列排：标签右对齐成一列、用标签色，值用正文色。
+    // 原来整行一段文字全部左对齐，账号页那几行看着就是没排过版的纯文本。
+    const int label_limit = (std::max)(text_rect.Width() * 40 / 100, ui->DPI(48));
+    int label_width = 0;
+    for (const auto& line : m_lines)
+    {
+        const size_t sep = line.find(L'：');
+        if (sep == wstring::npos || sep == 0) continue;
+        label_width = (std::max)(label_width,
+            static_cast<int>(ui->GetDrawer().GetTextExtent(line.substr(0, sep + 1).c_str()).cx));
+    }
+    label_width = (std::min)(label_width, label_limit);
     for (const auto& line : m_lines)
     {
         CRect line_rect = text_rect; line_rect.bottom = line_rect.top + ui->DPI(24);
-        ui->GetDrawer().DrawWindowText(line_rect, line.c_str(), ui->GetUIColors().color_text, Alignment::LEFT, false);
+        const size_t sep = line.find(L'：');
+        if (label_width > 0 && sep != wstring::npos && sep > 0)
+        {
+            CRect label_rect = line_rect;
+            label_rect.right = text_rect.left + label_width;
+            ui->GetDrawer().DrawWindowText(label_rect, line.substr(0, sep + 1).c_str(),
+                ui->GetUIColors().color_text_lable, Alignment::RIGHT, false);
+            CRect value_rect = line_rect;
+            value_rect.left = label_rect.right + ui->DPI(8);
+            ui->GetDrawer().DrawWindowText(value_rect, line.substr(sep + 1).c_str(),
+                ui->GetUIColors().color_text, Alignment::LEFT, false);
+        }
+        else
+        {
+            ui->GetDrawer().DrawWindowText(line_rect, line.c_str(), ui->GetUIColors().color_text, Alignment::LEFT, false);
+        }
         text_rect.top += ui->DPI(24);
     }
     if (m_state->qr_size > 0)
@@ -535,66 +567,44 @@ void OnlineMusicDetail::DrawScrollArea()
         int x = beside ? rect.right - size - ui->DPI(8) : rect.left + ui->DPI(8);
         int y = beside ? m_scroll_area_rect.top + ui->DPI(8) : text_rect.top + ui->DPI(8);
         ui->GetDrawer().FillRect(CRect(x, y, x + size, y + size), RGB(255, 255, 255), false);
+        // 每一行把连续的深色模块合并成一段再画：二维码是纯黑白格，逐格 FillRect 一帧最多
+        // 要画上千次，合并成行程后通常只剩几十次，画面完全一样。
         for (int row = 0; row < m_state->qr_size; ++row)
-            for (int col = 0; col < m_state->qr_size; ++col)
-                if (m_state->qr_pixels[row * m_state->qr_size + col])
-                    ui->GetDrawer().FillRect(CRect(x + (col + 4) * scale, y + (row + 4) * scale,
-                        x + (col + 5) * scale, y + (row + 5) * scale), RGB(0, 0, 0), false);
+        {
+            int col = 0;
+            while (col < m_state->qr_size)
+            {
+                if (!m_state->qr_pixels[row * m_state->qr_size + col]) { ++col; continue; }
+                int run = 1;
+                while (col + run < m_state->qr_size
+                    && m_state->qr_pixels[row * m_state->qr_size + col + run]) ++run;
+                ui->GetDrawer().FillRect(CRect(x + (col + 4) * scale, y + (row + 4) * scale,
+                    x + (col + 4 + run) * scale, y + (row + 5) * scale), RGB(0, 0, 0), false);
+                col += run;
+            }
+        }
     }
+}
+void OnlineMusic::FromXmlNode(tinyxml2::XMLElement* xml_node)
+{
+    Element::FromXmlNode(xml_node);
+    // 皮肤可以在 <onlineMusic item_height="30" font_size="9"/> 上覆盖这一页的列表密度。
+    // 皮肤里其它列表的行高也是这么给的，Groove 那套就是 30 而不是布局文件里的 32。
+    CTinyXml2Helper::GetElementAttributeInt(xml_node, "item_height", m_skin_item_height);
+    CTinyXml2Helper::GetElementAttributeInt(xml_node, "font_size", m_skin_font_size);
 }
 void OnlineMusic::InitComplete()
 {
     // 复用皮肤引擎中的导航、搜索框、按钮和滚动列表，继承当前主题与透明度。
-    static const char8_t* layout = u8R"xml(<verticalLayout>
-      <horizontalLayout height="32" margin-bottom="6">
-        <text id="online_title" type="userDefine" text="在线音乐" font_size="11"/>
-        <text id="online_source_label" type="userDefine" text="浏览音源" font_size="9" width="64" margin-left="4"/>
-        <comboBox id="online_source" width="128" margin-left="4"/>
-        <placeHolder/>
-        <comboBox id="online_page" width="104"/>
-      </horizontalLayout>
-      <horizontalLayout id="online_notice_row" height="24" margin-bottom="4">
-        <text id="online_notice" type="userDefine" text="" font_size="9" color_style="emphasis1"/>
-      </horizontalLayout>
-      <navigationBar id="online_nav" height="30" margin-bottom="6" icon_type="text_only" item_space="10" font_size="9">
-        <navigationItem text="发现"/><navigationItem text="搜索"/><navigationItem text="推荐"/>
-        <navigationItem text="榜单"/><navigationItem text="云歌单"/><navigationItem text="本地歌单"/><navigationItem text="账号"/>
-      </navigationBar>
-      <horizontalLayout id="online_search_row" height="28" margin-bottom="6">
-        <comboBox id="online_search_type" width="88" margin-right="6"/>
-        <onlineMusicSearch id="online_search"/>
-        <button id="online_search_submit" icon="find" text="搜索" width="28" margin-left="4"/>
-      </horizontalLayout>
-      <horizontalLayout id="online_actions" height="28" margin-bottom="6">
-        <button id="online_play" icon="play" text="播放" show_text="true" width="66"/>
-        <button id="online_queue" icon="add" text="加入队列" show_text="true" width="92" margin-left="4"/>
-        <button id="online_save" icon="favoriteOff" text="收藏" show_text="true" width="66" margin-left="4"/>
-        <button id="online_clear_local" icon="delete" text="清空" show_text="true" width="56" margin-left="4"/>
-        <placeHolder/>
-        <button id="online_import" icon="folder" text="导入歌单" width="28"/>
-        <button id="online_export" icon="saveAs" text="导出歌单" width="28" margin-left="4"/>
-        <button id="online_more_actions" icon="more" text="更多操作" width="28" margin-left="4"/>
-      </horizontalLayout>
-      <horizontalLayout id="online_account_actions" height="28" margin-bottom="6">
-        <button id="online_login" icon="online" text="扫码登录" show_text="true" width="104"/>
-        <button id="online_logout" icon="exit" text="退出账号" show_text="true" width="104" margin-left="8"/>
-        <placeHolder/>
-        <button id="online_account_more" icon="more" text="签到与账号操作" width="28" margin-left="4"/>
-      </horizontalLayout>
-      <onlineMusicList id="online_results" item_height="32"/>
-      <onlineMusicDetail id="online_detail"/>
-      <horizontalLayout height="26" margin-top="6">
-        <button id="online_back" icon="arrowLeft" text="返回列表" width="26"/>
-        <text id="online_status" type="userDefine" text="在线音乐" font_size="8" color_style="emphasis1" margin-left="4"/>
-        <text id="online_quality" type="userDefine" text="" font_size="8" width_follow_text="true" max-width="45%" margin-left="8" alignment="right"/>
-        <button id="online_locate" icon="locate" text="定位到正在播放（Ctrl+G）" width="26" margin-left="4"/>
-        <button id="online_refresh" icon="refresh" text="刷新（F5）" width="26" margin-left="4"/>
-        <button id="online_load_more" icon="next" text="加载更多" width="26" margin-left="4"/>
-      </horizontalLayout>
-    </verticalLayout>)xml";
-    tinyxml2::XMLDocument document; document.Parse(reinterpret_cast<const char*>(layout));
+    // 布局本身放在 res/ui/online_music.xml，由 .rc 以 TEXT 资源编译进 exe（IDR_ONLINE_MUSIC），
+    // 和 play_queue_panel / settings_panel 一个做法：皮肤能覆盖行高、字号，改布局不用动代码。
+    const std::string layout = CCommon::GetTextResourceRawData(IDR_ONLINE_MUSIC);
+    if (layout.empty()) return;
+    tinyxml2::XMLDocument document; document.Parse(layout.c_str());
+    if (document.RootElement() == nullptr) return;
     AddChild(CUserUi::BuildUiElementFromXmlNode(document.RootElement(), ui));
     m_list = FindElement<OnlineMusicList>("online_results");
+    m_list->ApplySkinDensity(m_skin_item_height, m_skin_font_size);
     m_detail = FindElement<OnlineMusicDetail>("online_detail");
     auto* source = FindElement<ComboBox>("online_source");
     for (auto* provider : online::CSourceRegistry::Instance().GetAll()) source->AddString(provider->GetDisplayName(), IconMgr::IT_Online);

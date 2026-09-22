@@ -55,6 +55,10 @@ public:
         std::vector<bool> unplayable; // 与 items 下标一致，true 表示播放失败过（列表里显示灰色）
         // 与 items 下标一致：这首歌是否在在线本地歌单里（列表里用实心红心标出来）
         std::vector<bool> saved_local;
+        // 与 items 下标一致：这一行的来源短名（本地/K源/B源）和它是不是在线曲目。
+        // 绘制线程每帧都要给每一行取这两样，所以在发布快照时算好，绘制里只做查表。
+        std::vector<std::wstring> row_origins;
+        std::vector<bool> row_online;
         std::wstring query, status{ L"在线音乐" }, detail, playback_error, notice;
         // 当前这份专辑/歌单/榜单的名字（从行的标题记下来，仅在窗口线程写）。
         // 「把整张专辑存为歌单」用它当默认名，整批下载也用它命名子文件夹。

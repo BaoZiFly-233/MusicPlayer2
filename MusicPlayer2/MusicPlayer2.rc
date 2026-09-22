@@ -3464,3 +3464,10 @@ BEGIN
     PUSHBUTTON      "刷新二维码",IDC_KUGOU_REFRESH_BUTTON,70,240,80,16
     LTEXT           "用酷狗App扫码登录后，就能播放需要会员的歌曲",IDC_STATIC,10,266,200,20,SS_CENTER
 END
+/////////////////////////////////////////////////////////////////////////////
+//
+// 在线音乐页面的布局（本分支新增）。和 play_queue_panel 一样以 TEXT 资源编译进 exe，
+// 运行时按 IDR_ONLINE_MUSIC 取，皮肤可以覆盖其中的行高、字号。
+//
+
+IDR_ONLINE_MUSIC        TEXT                    "res\\ui\\online_music.xml"

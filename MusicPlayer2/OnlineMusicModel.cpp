@@ -124,10 +124,14 @@ void COnlineMusicModel::Publish(bool rows_changed, bool reset_selection)
         m_state.songs.clear();
         m_state.unplayable.clear();
         m_state.saved_local.clear();
+        m_state.row_origins.clear();
+        m_state.row_online.clear();
         // 每发布一次都要复制整份状态，先按行数留好位置，别在绘制线程读快照时反复扩容
         m_state.songs.reserve(m_state.items.size());
         m_state.unplayable.reserve(m_state.items.size());
         m_state.saved_local.reserve(m_state.items.size());
+        m_state.row_origins.reserve(m_state.items.size());
+        m_state.row_online.reserve(m_state.items.size());
         // 本地歌单的地址集合只建一次，不为每一行扫一遍 m_local
         std::set<std::wstring> local_paths;
         for (const auto& local : m_local) local_paths.insert(local.file_path);
@@ -146,6 +150,10 @@ void COnlineMusicModel::Publish(bool rows_changed, bool reset_selection)
             const auto& path = m_state.songs.back().file_path;
             m_state.unplayable.push_back(!path.empty() && m_unplayable.count(path) != 0);
             m_state.saved_local.push_back(!path.empty() && local_paths.count(path) != 0);
+            // 来源短名和「是不是在线曲目」都在这里算好：绘制线程每帧都要给每一行取这两样，
+            // 现算就得每行解析一次地址（分配 + 逐字符转小写），绘制里不该做这种事。
+            m_state.row_online.push_back(!path.empty() && CSourceRegistry::IsVirtualPath(path));
+            m_state.row_origins.push_back(path.empty() ? std::wstring() : CSourceRegistry::OriginLabel(path));
         }
     }
     m_snapshot.store(make_shared<State>(m_state));
@@ -1342,7 +1350,9 @@ void COnlineMusicModel::StartExternalImport(const wstring& text)
         const wchar_t* prefix = L"外部平台歌单";
         task->import_default_name = wstring(prefix) + L" " + CTime::GetCurrentTime().Format(L"%Y-%m-%d").GetString();
     }
-    task->progress = OnlineProgress::Start(L"导入外部歌单", L"正在读取歌单", false, true);
+    // 阶段文案要和状态栏区分开：状态栏已经写着「正在读取外部歌单…」，
+    // 任务条再写一遍「正在读取歌单」就是同一句话说两次。
+    task->progress = OnlineProgress::Start(L"导入外部歌单", L"正在解析分享链接", false, true);
     m_library_task = task;
     m_state.items.clear();
     m_state.has_more = false;

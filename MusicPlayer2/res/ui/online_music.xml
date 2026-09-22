@@ -1,0 +1,57 @@
+<!--
+  在线音乐页面的内部布局。
+
+  和 play_queue_panel.xml / settings_panel.xml 一样，由 MusicPlayer2.rc 以 TEXT 资源
+  （IDR_ONLINE_MUSIC）编译进 exe，运行时按资源 ID 取（见 UIElement/OnlineMusic.cpp 的
+  InitComplete）。放在这里而不是写死在 C++ 里，是为了让皮肤能覆盖行高、字号这类参数 ——
+  列表行高就是取这里的 item_height，和播放列表一个规矩。
+
+  页面在皮肤里的位置由皮肤 XML 决定（内容区的 stackElement 里放 <onlineMusic margin="8"/>）。
+-->
+<verticalLayout>
+  <horizontalLayout height="32" margin-bottom="6">
+    <text id="online_title" type="userDefine" text="在线音乐" font_size="11"/>
+    <text id="online_source_label" type="userDefine" text="浏览音源" font_size="9" width="64" margin-left="4"/>
+    <comboBox id="online_source" width="128" margin-left="4"/>
+    <placeHolder/>
+    <comboBox id="online_page" width="104"/>
+  </horizontalLayout>
+  <horizontalLayout id="online_notice_row" height="24" margin-bottom="4">
+    <text id="online_notice" type="userDefine" text="" font_size="9" color_style="emphasis1"/>
+  </horizontalLayout>
+  <navigationBar id="online_nav" height="30" margin-bottom="6" icon_type="text_only" item_space="10" font_size="9">
+    <navigationItem text="发现"/><navigationItem text="搜索"/><navigationItem text="推荐"/>
+    <navigationItem text="榜单"/><navigationItem text="云歌单"/><navigationItem text="本地歌单"/><navigationItem text="账号"/>
+  </navigationBar>
+  <horizontalLayout id="online_search_row" height="28" margin-bottom="6">
+    <comboBox id="online_search_type" width="88" margin-right="6"/>
+    <onlineMusicSearch id="online_search"/>
+    <button id="online_search_submit" icon="find" text="搜索" width="28" margin-left="4"/>
+  </horizontalLayout>
+  <horizontalLayout id="online_actions" height="28" margin-bottom="6">
+    <button id="online_play" icon="play" text="播放" show_text="true" width="66"/>
+    <button id="online_queue" icon="add" text="加入队列" show_text="true" width="92" margin-left="4"/>
+    <button id="online_save" icon="favoriteOff" text="收藏" show_text="true" width="66" margin-left="4"/>
+    <button id="online_clear_local" icon="delete" text="清空" show_text="true" width="56" margin-left="4"/>
+    <placeHolder/>
+    <button id="online_import" icon="folder" text="导入歌单" width="28"/>
+    <button id="online_export" icon="saveAs" text="导出歌单" width="28" margin-left="4"/>
+    <button id="online_more_actions" icon="more" text="更多操作" width="28" margin-left="4"/>
+  </horizontalLayout>
+  <horizontalLayout id="online_account_actions" height="28" margin-bottom="6">
+    <button id="online_login" icon="online" text="扫码登录" show_text="true" width="104"/>
+    <button id="online_logout" icon="exit" text="退出账号" show_text="true" width="104" margin-left="8"/>
+    <placeHolder/>
+    <button id="online_account_more" icon="more" text="签到与账号操作" width="28" margin-left="4"/>
+  </horizontalLayout>
+  <onlineMusicList id="online_results" item_height="32"/>
+  <onlineMusicDetail id="online_detail"/>
+  <horizontalLayout height="26" margin-top="6">
+    <button id="online_back" icon="arrowLeft" text="返回列表" width="28"/>
+    <text id="online_status" type="userDefine" text="在线音乐" font_size="8" color_style="emphasis1" margin-left="4"/>
+    <text id="online_quality" type="userDefine" text="" font_size="8" width_follow_text="true" max-width="45%" margin-left="8" alignment="right"/>
+    <button id="online_locate" icon="locate" text="定位到正在播放（Ctrl+G）" width="28" margin-left="4"/>
+    <button id="online_refresh" icon="refresh" text="刷新（F5）" width="28" margin-left="4"/>
+    <button id="online_load_more" icon="next" text="加载更多" width="28" margin-left="4"/>
+  </horizontalLayout>
+</verticalLayout>

@@ -1112,6 +1112,8 @@
 #define IDC_ONLINE_DAILY                3028
 #define IDC_ONLINE_CLEAR_CACHE          3029
 #define IDC_ONLINE_OPEN_DOWNLOADS       3030
+// 在线音乐页面的布局文件，按上游面板的做法以 TEXT 资源编译进 exe
+#define IDR_ONLINE_MUSIC                3003
 // 40000-40099 留给「换源到…」：每一项按音源下标往后排（见 COnlineMusicModel::IsSwitchSourceCommand）
 #define ID_ONLINE_SWITCH_SOURCE_START   40000
 #define ID_ONLINE_MUSIC                 40100

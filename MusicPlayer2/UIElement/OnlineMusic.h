@@ -19,6 +19,13 @@ namespace UiElement
         bool IsItemEnabled(int row) override;   // 播放失败过的曲目显示为灰色
         std::wstring GetEmptyString() override;
         int GetColumnScrollTextWhenSelected() override { return 1; }
+        // 皮肤可以用 <onlineMusic item_height="30" font_size="9"/> 覆盖这一页的列表密度，
+        // 和皮肤里其它列表一个规矩（item_height 是基类的，只能在这里转一手）。
+        void ApplySkinDensity(int height, int font)
+        {
+            if (height > 0) item_height = height;
+            if (font > 0) font_size = font;
+        }
         // 每行左侧按来源给一个图标：本地文件和在线曲目一眼分开
         bool HasIcon() override { return true; }
         IconMgr::IconType GetIcon(int row) override;
@@ -91,6 +98,7 @@ namespace UiElement
     class OnlineMusic : public Element
     {
     public:
+        void FromXmlNode(tinyxml2::XMLElement* xml_node) override;
         void InitComplete() override;
         void Draw() override;
         void DrawTopMost() override;
@@ -115,6 +123,9 @@ namespace UiElement
         std::recursive_mutex m_view_mutex;
         OnlineMusicList* m_list{};
         OnlineMusicDetail* m_detail{};
+        // 皮肤在 <onlineMusic> 上给的列表密度，0 表示没给、用布局文件里的默认值
+        int m_skin_item_height{};
+        int m_skin_font_size{};
         std::shared_ptr<const COnlineMusicModel::State> m_last_state;
         int m_last_width{ -1 };
         bool m_activated{};
