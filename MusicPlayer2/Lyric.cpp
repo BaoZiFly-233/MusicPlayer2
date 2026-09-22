@@ -1076,7 +1076,9 @@ void CLyrics::ExtractTranslationFromBrackets()
 {
     // 若对已有翻译的歌词使用则放弃原翻译
     m_translate = false;
-    for (Lyric lyric : m_lyrics)
+    // 必须按引用遍历：按值遍历改的是副本，解析出的翻译根本没写回 m_lyrics，
+    // 只有 m_translate 被误置成 true。
+    for (Lyric& lyric : m_lyrics)
     {
         wstring temp = lyric.text;
         // 按带括号的翻译格式解析
