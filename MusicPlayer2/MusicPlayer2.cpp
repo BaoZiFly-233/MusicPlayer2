@@ -20,12 +20,35 @@
 #include "KugouSource.h"
 #include "BodianSource.h"
 #include "OnlineMediaCache.h"
+#include "OnlineDailyRewards.h"
 #include "KugouCrypto.h"
 #include "Player.h"
 #include "SongInfo.h"
 #include "OnlineMusicTests.h"
 #include "OnlineMusicPreview.h"
 #include <sstream>
+
+namespace
+{
+    // 命令行按参数分词后精确匹配。以前用整串 find 子串匹配，只要播放的文件
+    // 路径里碰巧含「--test-online」这类字样，启动就会被劫持进测试模式。
+    bool HasCommandLineArg(const wchar_t* arg)
+    {
+        int argc{};
+        LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+        if (argv == nullptr) return false;
+        for (int i = 0; i < argc; ++i)
+        {
+            if (wcscmp(argv[i], arg) == 0)
+            {
+                LocalFree(argv);
+                return true;
+            }
+        }
+        LocalFree(argv);
+        return false;
+    }
+}
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -135,12 +158,12 @@ BOOL CMusicPlayerApp::InitInstance()
             bodian_source->LoadIdentity(m_config_dir);
     }
 
-    if (wstring(m_lpCmdLine).find(L"--test-online") != wstring::npos)
+    if (HasCommandLineArg(L"--test-online"))
     {
-        m_test_exit_code = RunOnlineMusicTests(m_config_dir + L"online_test.log", wstring(m_lpCmdLine).find(L"--network") != wstring::npos) ? 0 : 1;
-        if (wstring(m_lpCmdLine).find(L"--playback") != wstring::npos
+        m_test_exit_code = RunOnlineMusicTests(m_config_dir + L"online_test.log", HasCommandLineArg(L"--network")) ? 0 : 1;
+        if (HasCommandLineArg(L"--playback")
             && !RunOnlinePlaybackTest(m_config_dir + L"online_playback_test.log", m_playlist_dir + L"temp.playlist", m_local_dir)) m_test_exit_code = 1;
-        if (wstring(m_lpCmdLine).find(L"--media-cache") != wstring::npos
+        if (HasCommandLineArg(L"--media-cache")
             && !RunOnlineMediaIntegrationTest(m_config_dir + L"online_media_test.log", m_playlist_dir + L"temp.playlist", m_local_dir)) m_test_exit_code = 1;
         return FALSE;
     }
@@ -149,8 +172,7 @@ BOOL CMusicPlayerApp::InitInstance()
     // 依次调用各音源做一次搜索和取播放地址测试，把结果写到 source_test.log。
     // 这样在没有界面入口时也能验证接口是否正常，出问题时便于定位。
     {
-        wstring probe_arg{ m_lpCmdLine };
-        bool want_source_test = probe_arg.find(L"--test-source") != wstring::npos;
+        bool want_source_test = HasCommandLineArg(L"--test-source");
 
         if (want_source_test)
         {
@@ -163,6 +185,8 @@ BOOL CMusicPlayerApp::InitInstance()
                 log << L"  - " << src->GetDisplayName() << L" (" << src->GetScheme() << L")\r\n";
             log << L"\r\n";
 
+            // 成败写进退出码，脚本才能判定自检结果（和 --test-online 一致）
+            bool test_success = true;
             for (online::IOnlineSource* src : sources)
             {
                 log << L"========== " << src->GetDisplayName() << L" ==========\r\n";
@@ -174,8 +198,13 @@ BOOL CMusicPlayerApp::InitInstance()
                     log << L"  登录状态 = " << (kg->IsLoggedIn() ? L"已登录" : L"未登录") << L"\r\n";
                     log << L"  当前 dfid = " << kugou::FromUtf8(kg->GetIdentity().dfid) << L"\r\n";
 
-                    // 注册设备换取 dfid（取播放地址前需要它）
-                    if (kg->RegisterDevice())
+                    // 注册设备换取 dfid（取播放地址前需要它）。已有身份就别再注册了：
+                    // 重新注册会换掉 dfid 并覆盖用户的身份文件，还消耗注册配额。
+                    if (!kg->GetIdentity().dfid.empty())
+                    {
+                        log << L"  设备注册: 已有身份，跳过\r\n";
+                    }
+                    else if (kg->RegisterDevice())
                     {
                         log << L"  设备注册: 成功  dfid=" << kugou::FromUtf8(kg->GetIdentity().dfid) << L"\r\n";
                         kg->SaveIdentity(m_config_dir);     // 存下来，下次不用重新注册
@@ -211,6 +240,7 @@ BOOL CMusicPlayerApp::InitInstance()
 
                 vector<online::Track> tracks;
                 bool ok = src->Search(L"晴天", 1, tracks);
+                if (!ok) test_success = false;
                 log << L"  搜索「晴天」: " << (ok ? L"成功" : L"失败")
                     << L"，得到 " << tracks.size() << L" 首\r\n";
                 if (!ok)
@@ -248,6 +278,7 @@ BOOL CMusicPlayerApp::InitInstance()
                     }
                     if (!got_url)
                     {
+                        test_success = false;
                         log << L"  取播放地址: 前 " << tried << L" 首都没拿到\r\n";
                         if (!last_err.empty())
                             log << L"    最后一首的原因: " << last_err << L"\r\n";
@@ -269,6 +300,7 @@ BOOL CMusicPlayerApp::InitInstance()
                     CloseHandle(hFile);
                 }
             }
+            m_test_exit_code = test_success ? 0 : 1;
             return FALSE;       // 自检完直接退出
         }
 
@@ -461,12 +493,16 @@ BOOL CMusicPlayerApp::InitInstance()
     m_accelerator_res.Init();
     m_chinese_pingyin_res.Init();
 
-    if (cmd_line.find(L"--render-online-preview") != wstring::npos)
+    if (HasCommandLineArg(L"--render-online-preview"))
     {
         m_test_exit_code = COnlineMusicPreview::Run(m_config_dir + L"ui-preview\\") ? 0 : 1;
         return FALSE;
     }
 
+    // 奖励模块的 ini 读写只在 Configure 之后才生效：以前只在进在线音乐页时 Configure，
+    // 启动后不进在线页就开设置面板切「自动签到」，开关会被静默丢弃、刷新后跳回。
+    COnlineDailyRewards::Instance().Configure(m_config_dir);
+    CBodianAdRewards::Instance().Configure(m_config_dir);
     online::COnlineMediaCache::Instance().Configure(m_config_dir);
     CMusicPlayerDlg dlg(cmd_line);
     //CMusicPlayerDlg dlg(L"\"D:\\音乐\\纯音乐\\班得瑞\\05. Chariots Of Fire 火战车.mp3\"");
