@@ -37,7 +37,7 @@ void CLyricDownloadCommon::AddLyricTag(wstring& lyric_str, const wstring & song_
 	lyric_str = tag_info + lyric_str;
 }
 
-int CLyricDownloadCommon::SelectMatchedItem(const vector<ItemInfo>& down_list, const wstring& title, const wstring& artist, const wstring& album, const wstring& filename, bool write_log)
+int CLyricDownloadCommon::SelectMatchedItem(const vector<ItemInfo>& down_list, const wstring& title, const wstring& artist, const wstring& album, const wstring& filename, bool write_log, int duration)
 {
 	/*
 	匹配度计算：
@@ -47,9 +47,9 @@ int CLyricDownloadCommon::SelectMatchedItem(const vector<ItemInfo>& down_list, c
 	艺术家——艺术家     0.4
 	唱片集——唱片集     0.3
 	文件名——标题       0.3
-	文件名——艺术家     0.2
+	文件名——艺术家     0.3
 	列表中的排序       0.05
-	时长              0.6
+	时长              0.6（两边时长都有效时才参与）
 	*/
 	if (down_list.empty()) return -1;
 	vector<double> weights;		//储存列表中每一项的权值
@@ -64,6 +64,13 @@ int CLyricDownloadCommon::SelectMatchedItem(const vector<ItemInfo>& down_list, c
 		weight += (CInternetCommon::StringSimilarDegree_LD(album, down_list[i].album) * 0.3);
 		weight += (CInternetCommon::StringSimilarDegree_LD(filename, down_list[i].title) * 0.3);
 		weight += (CInternetCommon::StringSimilarDegree_LD(filename, down_list[i].artist) * 0.3);
+                //时长接近度：差 5 秒以内线性衰减，差得越远分越低；任一侧未知（0）就不参与，
+                //避免把没有时长信息的一侧硬压成 0 分被「0.2 权值」的旧行为误杀
+                if (duration > 0 && down_list[i].duration > 0)
+                {
+                        const double diff = std::fabs(static_cast<double>(duration - down_list[i].duration));
+                        weight += (1 - (std::min)(1.0, diff / 5000.0)) * 0.6;
+                }
 
 		weight += ((1 - i * 0.02) * 0.05);			//列表中顺序的权值，一般来说，网易云音乐的搜索结果的返回结果中
 		//排在越前面的关联度就越高，这里取第一项为1，之后每一项减0.02，最后再乘以0.05

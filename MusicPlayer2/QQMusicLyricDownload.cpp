@@ -1,4 +1,4 @@
-#include "stdafx.h"
+Ôªø#include "stdafx.h"
 #include "QQMusicLyricDownload.h"
 #include "nlohmann/json.hpp"
 
@@ -14,7 +14,7 @@ std::wstring CQQMusicLyricDownload::GetAlbumCoverURL(const wstring& song_id)
     if (song_id.empty())
         return std::wstring();
 
-    //ªÒ»°∏Ë«˙–≈œ¢
+    //Ëé∑ÂèñÊ≠åÊõ≤‰ø°ÊÅØ
     CString song_url;
     song_url.Format(L"https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?songmid=%s&format=json", song_id.c_str());
     std::wstring song_result;
@@ -32,7 +32,7 @@ std::wstring CQQMusicLyricDownload::GetAlbumCoverURL(const wstring& song_id)
             album_id = CCommon::StrToUnicode(album.at("mid").get<std::string>(), CodeType::UTF8);
         }
     }
-    catch (std::exception e)
+    catch (const std::exception& e)
     {
 
     }
@@ -79,7 +79,7 @@ void CQQMusicLyricDownload::DisposeSearchResult(vector<ItemInfo>& down_list, con
         }
 
     }
-    catch (std::exception e)
+    catch (const std::exception& e)
     {
         TRACE(e.what());
     }
@@ -118,7 +118,7 @@ bool CQQMusicLyricDownload::DisposeLryic(wstring& lyric_str, bool download_trans
             }
         }
     }
-    catch (std::exception e)
+    catch (const std::exception& e)
     {
         TRACE(e.what());
         return false;

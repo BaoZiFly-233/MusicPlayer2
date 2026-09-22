@@ -1093,11 +1093,12 @@ wstring CBodianSource::ResolvePlayUrl(const wstring& virtual_path)
 namespace
 {
 // [mm:ss.xxx] 转毫秒。成功时 pos 停在 ']' 之后。
+// 小数位 1~3 位都认（[mm:ss.x] 这类变体也见过），别把门槛写死成 3 位。
 bool ParseLrcxTime(const wstring& line, size_t pos, int& ms)
 {
-    if (pos + 10 > line.size() || line[pos] != L'[') return false;
+    if (pos + 8 > line.size() || line[pos] != L'[') return false;
     const size_t close = line.find(L']', pos);
-    if (close == wstring::npos || close - pos < 10) return false;
+    if (close == wstring::npos || close - pos < 8) return false;
     const wstring tag = line.substr(pos + 1, close - pos - 1);
     if (tag[2] != L':' || tag[5] != L'.') return false;
     for (size_t i = 0; i < tag.size(); ++i)

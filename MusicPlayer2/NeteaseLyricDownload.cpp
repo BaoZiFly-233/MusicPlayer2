@@ -1,4 +1,4 @@
-#include "stdafx.h"
+ï»¿#include "stdafx.h"
 #include "NeteaseLyricDownload.h"
 #include "nlohmann/json.hpp"
 
@@ -70,11 +70,11 @@ std::wstring CNeteaseLyricDownload::GetAlbumCoverURL(const wstring& song_id)
 {
 	if (song_id.empty())
 		return wstring();
-	//»ñÈ¡×¨¼­·âÃæ½Ó¿ÚµÄURL
+	//è·å–ä¸“è¾‘å°é¢æ¥å£çš„URL
 	wchar_t buff[256];
 	swprintf_s(buff, L"http://music.163.com/api/song/detail/?id=%s&ids=%%5B%s%%5D&csrf_token=", song_id.c_str(), song_id.c_str());
 	wstring contents;
-	//½«URLÄÚÈİ±£´æµ½ÄÚ´æ
+	//å°†URLå†…å®¹ä¿å­˜åˆ°å†…å­˜
 	if (!CInternetCommon::GetURL(wstring(buff), contents))
 		return wstring();
 #ifdef _DEBUG
@@ -121,46 +121,30 @@ bool CNeteaseLyricDownload::DownloadLyric(const wstring& song_id, wstring& resul
 
 bool CNeteaseLyricDownload::DisposeLryic(wstring& lyric_str, bool download_translate)
 {
-	size_t index1 = lyric_str.find('[');	//²éÕÒµÚ1¸ö×óÖĞÀ¨ºÅ£¬¼´Îª¸è´Ê¿ªÊ¼µÄÎ»ÖÃ
-	if (index1 == string::npos)
-	{
-		return false;
-	}
-	lyric_str = lyric_str.substr(index1, lyric_str.size() - index1 - 13);
-	if (!lyric_str.empty() && lyric_str.back() == L'\"')
-		lyric_str.pop_back();
-
-	for (size_t i{}; i < lyric_str.size() - 1; i++)
-	{
-		//Èç¹û¸è´ÊÖĞº¬ÓĞ×Ö·û´®¡°\r\n¡±»ò¡°\n\n¡±£¬Ôò½«Æä×ª»»³ÉÎªÁ½¸ö×ªÒå×Ö·û\r\n£¬É¾µôÁ½¸ö¶àÓàµÄ×Ö·û
-		if (i < lyric_str.size() - 3)
-		{
-			if ((lyric_str[i] == '\\' && lyric_str[i + 1] == 'r' && lyric_str[i + 2] == '\\' && lyric_str[i + 3] == 'n')
-				|| (lyric_str[i] == '\\' && lyric_str[i + 1] == 'n' && lyric_str[i + 2] == '\\' && lyric_str[i + 3] == 'n'))
-			{
-				lyric_str[i] = '\r';
-				lyric_str[i + 1] = '\n';
-				lyric_str.erase(i + 2, 2);
-			}
-		}
-		//Èç¹û¸è´ÊÖĞº¬ÓĞ×Ö·û´®¡°\r¡±£¬Ôò½«Æä×ª»»³ÉÎªÁ½¸ö×ªÒå×Ö·û\r\n
-		if (lyric_str[i] == '\\' && lyric_str[i + 1] == 'r')
-		{
-			lyric_str[i] = '\r';
-			lyric_str[i + 1] = '\n';
-		}
-		//Èç¹û¸è´ÊÖĞº¬ÓĞ×Ö·û´®¡°\n¡±£¬Ôò½«Æä×ª»»³ÉÎªÁ½¸ö×ªÒå×Ö·û\r\n
-		if (lyric_str[i] == '\\' && lyric_str[i + 1] == 'n')	//½«¸è´ÊÎÄ±¾ÖĞµÄ¡°\n¡±×ª»»³É»Ø³µ·û\r\n
-		{
-			lyric_str[i] = '\r';
-			lyric_str[i + 1] = '\n';
-		}
-		//Èç¹û¸è´ÊÖĞº¬ÓĞ×Ö·û´®¡°\"¡±£¬ÔòÉ¾³ı·´Ğ±¸Ü¡°\¡±
-		if (lyric_str[i] == '\\' && lyric_str[i + 1] == '\"')
-		{
-			lyric_str.erase(i, 1);
-		}
-	}
-
-	return true;
+        // å“åº”æ˜¯ JSONï¼šlyric æ˜¯åŸæ–‡ï¼Œtlyric æ˜¯è¯‘æ–‡ã€‚æ—§å®ç°æ‰‹å·¥ææ‰ç»“å°¾å†é€å­—ç¬¦åè½¬ä¹‰ï¼Œ
+        // å“åº”çŸ­ä¸€ç‚¹å°±ä¼šè¶Šç•Œè¯»ï¼Œè¯‘æ–‡ä¹Ÿåªæ˜¯ JSON æ®‹éª¸æ··è¿›æ­Œè¯ç¢°å·§èƒ½ç”¨ã€‚
+        // ç°åœ¨æŒ‰ JSON è§£æï¼Œå’Œ QQ éŸ³ä¹é‚£ä¸ªä¸€ä¸ªåšæ³•ï¼›è¯‘æ–‡æ•´æ®µè·Ÿåœ¨åŸæ–‡åé¢ï¼Œ
+        // æ—¶é—´æˆ³ç›¸åŒçš„è¡Œä¼šè¢« CLyrics é…æˆåŸæ–‡åŠ è¯‘æ–‡ã€‚
+        try
+        {
+                nlohmann::json res_json = nlohmann::json::parse(CCommon::UnicodeToStr(lyric_str, CodeType::UTF8));
+                lyric_str = CCommon::StrToUnicode(res_json.value("lyric", std::string()), CodeType::UTF8);
+                if (lyric_str.empty())
+                        return false;
+                if (download_translate)
+                {
+                        std::wstring trans = CCommon::StrToUnicode(res_json.value("tlyric", std::string()), CodeType::UTF8);
+                        if (!trans.empty())
+                        {
+                                lyric_str += L"\r\n";
+                                lyric_str += trans;
+                        }
+                }
+        }
+        catch (const std::exception& e)
+        {
+                TRACE(L"NeteaseLyricDownload dispose error: %hs\n", e.what());
+                return false;
+        }
+        return true;
 }

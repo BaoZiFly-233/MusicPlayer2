@@ -375,7 +375,7 @@ UINT CLyricBatchDownloadDlg::ThreadFunc(LPVOID lpParam)
         if (theApp.m_str_table.LoadText(L"TXT_EMPTY_TITLE") == title) title.clear();
         if (theApp.m_str_table.LoadText(L"TXT_EMPTY_ARTIST") == artist) artist.clear();
         if (theApp.m_str_table.LoadText(L"TXT_EMPTY_ALBUM") == album) album.clear();
-        int best_matched = CLyricDownloadCommon::SelectMatchedItem(down_list, title, artist, album, cur_song.GetFileName(), true);
+        int best_matched = CLyricDownloadCommon::SelectMatchedItem(down_list, title, artist, album, cur_song.GetFileName(), true, cur_song.length().toInt());
         if (best_matched < 0)
         {
             song_info_ori.SetNoOnlineLyric(true);

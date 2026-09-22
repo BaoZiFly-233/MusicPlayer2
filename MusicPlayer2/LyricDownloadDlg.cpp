@@ -516,7 +516,7 @@ afx_msg LRESULT CLyricDownloadDlg::OnSearchComplate(WPARAM wParam, LPARAM lParam
 		}
 	}
 	if(!id_releated)
-		best_matched = CLyricDownloadCommon::SelectMatchedItem(m_down_list, m_song.title, m_song.artist, m_song.album, GetLyricFileName(), true);
+		best_matched = CLyricDownloadCommon::SelectMatchedItem(m_down_list, m_song.title, m_song.artist, m_song.album, GetLyricFileName(), true, m_song.length().toInt());
     wstring info;
 	m_unassciate_lnk.ShowWindow(SW_HIDE);
     SongInfo song_info_ori{ CSongDataManager::GetInstance().GetSongInfo3(m_song) };
