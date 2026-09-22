@@ -109,6 +109,7 @@ void CBassCore::InitCore()
     {
         //加载插件
         HPLUGIN handle = BASS_PluginLoad((plugin_dir + plugin_file).c_str(), 0);
+        if (handle == 0) continue;      // 加载失败的句柄 0 不能入表，退出时 BASS_PluginFree(0) 会把全部插件释放一遍
         m_plugin_handles.push_back(handle);
         //获取插件支持的音频文件类型
         const BASS_PLUGININFO* plugin_info = BASS_PluginGetInfo(handle);
@@ -207,7 +208,8 @@ void CBassCore::MidiLyricSync(HSYNC handle, DWORD channel, DWORD data, void * us
         return;
     m_midi_lyric.midi_no_lyric = false;
     BASS_MIDI_MARK mark;
-    m_bass_midi_lib.BASS_MIDI_StreamGetMark(channel, (DWORD)user, data, &mark); // get the lyric/text
+    if (!m_bass_midi_lib.BASS_MIDI_StreamGetMark(channel, (DWORD)user, data, &mark)) // get the lyric/text
+        return;     // 取不到标记时 mark.text 未初始化，不能解引用
     if (mark.text[0] == '@') return; // skip info
     if (mark.text[0] == '\\')
     {
@@ -347,11 +349,19 @@ void CBassCore::Open(const wchar_t * file_path)
         BASS_ChannelSetSync(m_musicStream, BASS_SYNC_END, 0, MidiEndSync, 0);
         m_midi_lyric.midi_no_lyric = true;
     }
-    SetFXHandle();
+    // EQ 和混响挂在最终的流上：原来挂在 TempoCreate 之前的源流上，
+    // RemoveFXHandle 却对 tempo 流移除，句柄永远对不上，全靠 FREESOURCE 兜底释放。
     if (m_bass_fx_lib.IsSucceed())
-        m_musicStream = m_bass_fx_lib.BASS_FX_TempoCreate(m_musicStream, BASS_FX_FREESOURCE);
+    {
+        HSTREAM tempo_stream = m_bass_fx_lib.BASS_FX_TempoCreate(m_musicStream, BASS_FX_FREESOURCE);
+        if (tempo_stream != 0)
+            m_musicStream = tempo_stream;
+        else    // TempoCreate 失败时源流还活着，别把句柄丢了
+            BASS_ChannelGetAttribute(m_musicStream, BASS_ATTRIB_FREQ, &m_freq);
+    }
     else
         BASS_ChannelGetAttribute(m_musicStream, BASS_ATTRIB_FREQ, &m_freq);
+    SetFXHandle();
 }
 
 void CBassCore::Close()
@@ -361,6 +371,7 @@ void CBassCore::Close()
     {
         if (KillTimer(theApp.m_pMainWnd->GetSafeHwnd(), FADE_TIMER_ID))
             BASS_ChannelStop(m_musicStream);
+        m_fading = false;   // 同 Play()：别让粘滞的 m_fading 锁死音量控制
         RemoveFXHandle();
         BASS_StreamFree(m_musicStream);
         m_musicStream = 0;
@@ -373,6 +384,9 @@ void CBassCore::Play()
     if (theApp.m_play_setting_data.fade_effect && theApp.m_play_setting_data.fade_time > 0)     //如果设置了播放时音量淡入淡出
     {
         KillTimer(theApp.m_pMainWnd->GetSafeHwnd(), FADE_TIMER_ID);
+        // 待触发的暂停定时器被杀掉时，m_fading 还停在 true，不清掉的话
+        // SetVolume 会一直被当成「淡出进行中」而失效，音量条从此没反应。
+        m_fading = false;
         int pos = GetCurPosition();
         pos -= (theApp.m_play_setting_data.fade_time / 2);
         if (pos < 0)
@@ -456,10 +470,11 @@ void CBassCore::SetSpeed(float speed)
     }
     else
     {
-        float freq;
+        // 没有 bass_fx 时用采样率模拟变速。超范围一律按原速处理；
+        // 原来把 speed 置 0，freq=0 会被 BASS 拒绝，「原速」按钮就失灵了。
         if (std::fabs(speed) < 0.01 || std::fabs(speed - 1) < 0.01 || speed < MIN_PLAY_SPEED || speed > MAX_PLAY_SPEED)
-            speed = 0;
-        freq = m_freq * speed;
+            speed = 1;
+        float freq = m_freq * speed;
         BASS_ChannelSetAttribute(m_musicStream, BASS_ATTRIB_FREQ, freq);
     }
 }
@@ -765,9 +780,9 @@ bool CBassCore::EncodeAudio(const std::wstring& src_file_path, const wstring& de
         //	BASS_StreamFree(hStream);
         //}
 
-        //获取转换百分比
+        //获取转换百分比（两次转换之间不能共享，否则第二次开头会跳发旧进度）
         int percent;
-        static int last_percent{ -1 };
+        int last_percent{ -1 };
         //设置截取位置
         if (end_pos > start_pos)
         {

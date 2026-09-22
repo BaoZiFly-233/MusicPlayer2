@@ -199,8 +199,9 @@ void CPlayer::IniPlayList(bool play, MediaLibRefreshMode refresh_mode, SongKey s
     if (m_playlist.empty())
         m_playlist.push_back(SongInfo{});       // 没有歌曲时向播放列表插入一个空的SongInfo对象
 
-    //创建初始化播放列表的工作线程
-    m_pThread = AfxBeginThread(IniPlaylistThreadFunc, &m_thread_info);
+    //创建初始化播放列表的工作线程（AfxBeginThread 默认自动删除线程对象，
+    //返回值不可保存，原来存进 m_pThread 的指针随即悬空）
+    AfxBeginThread(IniPlaylistThreadFunc, &m_thread_info);
 }
 
 UINT CPlayer::IniPlaylistThreadFunc(LPVOID lpParam)
@@ -523,6 +524,7 @@ void CPlayer::MusicControl(Command command, int volume_step, const wstring& alte
         SendMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_POST_MUSIC_STREAM_OPENED, 0, 0);
         m_error_code = 0;
         m_error_state = ES_NO_ERROR;
+        m_open_failed = false;
         m_song_length = CPlayTime();
         m_current_file_type.clear();
         m_Lyrics = CLyrics();
@@ -543,6 +545,7 @@ void CPlayer::MusicControl(Command command, int volume_step, const wstring& alte
             // 注意不要拿空路径去调播放核心：播放核心会用一个无效句柄继续查音频信息，
             // 那里没有判空，会直接崩溃。所以这里只置状态就返回。
             m_error_state = ES_FILE_CANNOT_BE_OPEN;
+            m_open_failed = true;
             m_current_position = CPlayTime();
             m_file_opend = true;
             PostMessage(theApp.m_pMainWnd->m_hWnd, WM_MUSIC_STREAM_OPENED, 0, 0);
@@ -554,8 +557,10 @@ void CPlayer::MusicControl(Command command, int volume_step, const wstring& alte
         m_pCore->Open(play_path.c_str());
         const int open_error = m_pCore->GetErrorCode();
         GetPlayerCoreError(L"Open");
+        // 核心报错就记下「这条流打不开」，别让 PLAY 再去碰它；
         if (m_pCore->GetCoreType() == PT_BASS && GetBassHandle() == 0)
             m_error_state = ES_FILE_CANNOT_BE_OPEN;
+        m_open_failed = open_error != 0 || m_error_state == ES_FILE_CANNOT_BE_OPEN;
         m_file_opend = true;
         //获取音频类型
         m_current_file_type = m_pCore->GetAudioType();  // 根据通道信息获取当前音频文件的类型
@@ -608,7 +613,9 @@ void CPlayer::MusicControl(Command command, int volume_step, const wstring& alte
     }
     break;
     case Command::PLAY:
-        if (!m_file_opend || m_error_state != ES_NO_ERROR || m_error_code != 0) return;
+        // 只拦「打不开的流」和真实错误状态；m_error_code 是任意一次 BASS 调用
+        // 留下的粘滞码（在线流 seek 越界就常见），拿它当门槛会把之后的播放永久拦住。
+        if (!m_file_opend || m_error_state != ES_NO_ERROR || m_open_failed) return;
         ConnotPlayWarning();
         m_pCore->Play();
         m_playing = PS_PLAYING;
@@ -671,7 +678,7 @@ void CPlayer::MusicControl(Command command, int volume_step, const wstring& alte
         }
         else
         {
-            if (!m_file_opend || m_error_state != ES_NO_ERROR || m_error_code != 0) return;
+            if (!m_file_opend || m_error_state != ES_NO_ERROR || m_open_failed) return;
             ConnotPlayWarning();
             m_pCore->Play();
             m_playing = PS_PLAYING;
@@ -2181,6 +2188,8 @@ int CPlayer::MoveItems(std::vector<int> indexes, int dest)
 
 void CPlayer::SeekTo(int position)
 {
+    // m_index 越界或核心未就绪时直接返回：下面要裸访问 m_playlist[m_index]
+    if (m_index < 0 || m_index >= GetSongNum() || m_pCore == nullptr) return;
     if (position > m_song_length.toInt())
         position = m_song_length.toInt();
     m_current_position.fromInt(position);
@@ -2276,7 +2285,10 @@ void CPlayer::PrepareNextTrack()
             && (m_prepared_random_song == m_playlist[m_prepared_random]);
         if (!valid)
         {
-            m_prepared_random = CCommon::Random(0, GetSongNum());
+            // 随机下一曲避开正在播的这首：CCommon::Random 是前闭后开，
+            // 直接 Random(0, n) 会抽到 m_index 自己，自动切歌就变成重播当前曲。
+            m_prepared_random = CCommon::Random(0, GetSongNum() - 1);
+            if (m_prepared_random >= m_index) ++m_prepared_random;
             m_prepared_from_index = m_index; m_prepared_playlist_size = m_playlist.size();
             m_prepared_from_song = GetSafeCurrentSongInfo(); m_prepared_random_song = m_playlist[m_prepared_random];
         }

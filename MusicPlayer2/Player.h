@@ -79,7 +79,6 @@ public:
     };
 
 private:
-    CWinThread* m_pThread{};        //初始化播放列表的线程
     ThreadInfo m_thread_info;
 
     IPlayerCore* m_pCore{};
@@ -109,6 +108,8 @@ private:
     int m_index_tmp{ 0 };               // 播放列表初始化中暂存当前播放音乐序号
 
     int m_error_code{ 0 };              //储存错误代码
+    bool m_open_failed{ false };        //这次 OPEN 失败过：PLAY 不再碰这条流，直到下一次 OPEN。
+                                        //不能用 m_error_code 当这个门槛——在线流 seek 越界这类瞬时错误也会留下它
     ErrorState m_error_state{};
 
     //正在播放标志（0：已停止，1：已暂停，2：正在播放）。
